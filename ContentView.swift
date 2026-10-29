@@ -6,14 +6,13 @@ struct ARViewContainer: UIViewRepresentable {
     @ObservedObject var manager: ARScannerManager
 
     func makeUIView(context: Context) -> ARSCNView {
-        let screenBounds = UIScreen.main.bounds
-        let arView = ARSCNView(frame: screenBounds)
+        let arView = ARSCNView(frame: .zero)
         arView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         arView.automaticallyUpdatesLighting = true
         arView.delegate = manager
         arView.session.delegate = manager
 
-        // Hiển thị khung dây 3D wireframe đè lên vật thể
+        // Hiển thị khung dây 3D wireframe chuẩn trên bề mặt vật thể thực
         arView.debugOptions = [.showWireframe]
 
         #if !targetEnvironment(simulator)
@@ -36,169 +35,146 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            // CAMERA TRÀN VIỀN 100% TOÀN MÀN HÌNH
+            // 1. TOÀN BỘ KHÔNG GIAN LÀ CAMERA LIDAR 100%
             ARViewContainer(manager: scanner)
-                .ignoresSafeArea(.all)
+                .edgesIgnoringSafeArea(.all)
 
-            // GIAO DIỆN ĐIỀU KHIỂN: SÁT VIỀN TRÊN VÀ SÁT VIỀN DƯỚI
+            // 2. GIAO DIỆN NỔI ÉP SÁT TUYỆT ĐỐI VÀO 2 MÉP TRÊN VÀ DƯỚI
             VStack(spacing: 0) {
-                // ==========================================
-                // 1. THANH TIÊU ĐỀ NẰM SÁT VIỀN TRÊN
-                // ==========================================
-                HStack(spacing: 8) {
-                    // Badge Digital Twin màu cam nổi bật
-                    Text("DIGITAL TWIN")
-                        .font(.system(size: 12, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5)
-                                .fill(Color.orange)
-                        )
-
-                    Text("HUẾ HERITAGE")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
-
-                    if scanner.isLiveStreaming {
-                        HStack(spacing: 3) {
-                            Circle().fill(Color.red).frame(width: 6, height: 6)
-                            Text("LIVE")
-                                .font(.system(size: 9, weight: .black))
-                                .foregroundColor(.red)
+                // THANH TIÊU ĐỀ TRÊN CÙNG: ÉP SÁT MÉP TRÊN (TRÀN QUA TAI THỎ / DYNAMIC ISLAND)
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        // LOGO DI TÍCH HUẾ + HUY HIỆU DIGITAL TWIN
+                        HStack(spacing: 5) {
+                            Text("🏛️")
+                                .font(.system(size: 15))
+                            Text("DIGITAL TWIN")
+                                .font(.system(size: 10, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.orange))
+                            Text("HUẾ HERITAGE")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
                         }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.15))
-                        .cornerRadius(4)
-                    }
 
-                    Spacer()
-
-                    // NÚT BẬT / TẮT ĐÈN FLASH
-                    Button(action: {
-                        scanner.toggleTorch()
-                    }) {
-                        Image(systemName: scanner.isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(scanner.isTorchOn ? .yellow : .white)
-                            .padding(8)
-                            .background(scanner.isTorchOn ? Color.yellow.opacity(0.3) : Color.black.opacity(0.6))
-                            .clipShape(Circle())
-                    }
-
-                    // NÚT RESET QUÉT LẠI
-                    Button(action: {
-                        scanner.resetScan()
-                        statusToast = "Đã làm mới dữ liệu quét"
-                        withAnimation { showToast = true }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            withAnimation { showToast = false }
+                        if scanner.isLiveStreaming {
+                            HStack(spacing: 3) {
+                                Circle().fill(Color.red).frame(width: 6, height: 6)
+                                Text("LIVE")
+                                    .font(.system(size: 9, weight: .black))
+                                    .foregroundColor(.red)
+                            }
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.18))
+                            .cornerRadius(4)
                         }
-                    }) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(8)
-                            .background(Color.black.opacity(0.6))
-                            .clipShape(Circle())
-                    }
 
-                    // NÚT CÀI ĐẶT
-                    Button(action: { showingSettings.toggle() }) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 15))
-                            .foregroundColor(.white)
-                            .padding(8)
-                            .background(Color.black.opacity(0.6))
-                            .clipShape(Circle())
+                        Spacer()
+
+                        // NÚT BẬT / TẮT ĐÈN FLASH
+                        Button(action: { scanner.toggleTorch() }) {
+                            Image(systemName: scanner.isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(scanner.isTorchOn ? .yellow : .white)
+                                .padding(7)
+                                .background(scanner.isTorchOn ? Color.yellow.opacity(0.3) : Color.white.opacity(0.15))
+                                .clipShape(Circle())
+                        }
+
+                        // NÚT LÀM MỚI DỮ LIỆU
+                        Button(action: {
+                            scanner.resetScan()
+                            showNotification("Đã xóa và làm mới lần quét")
+                        }) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(7)
+                                .background(Color.white.opacity(0.15))
+                                .clipShape(Circle())
+                        }
+
+                        // NÚT CÀI ĐẶT KẾT NỐI
+                        Button(action: { showingSettings.toggle() }) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                                .padding(7)
+                                .background(Color.white.opacity(0.15))
+                                .clipShape(Circle())
+                        }
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 48) // Bù phần tai thỏ / Dynamic Island một cách hoàn hảo
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 42) // Đặt sát mép trên vừa khít dưới đồng hồ
-                .padding(.bottom, 6)
                 .background(Color.black.opacity(0.85))
 
-                // Cảnh báo vùng thưa điểm
+                // Mini cảnh báo vùng thưa điểm (nếu có)
                 if scanner.missingAreaCount > 0 && scanner.highlightMissing {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.yellow)
-                            .font(.system(size: 11))
+                            .font(.system(size: 10))
                         Text("Phát hiện \(scanner.missingAreaCount) vùng thưa điểm (Đang đánh dấu ĐỎ)")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(.white)
                     }
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 3)
                     .background(Color.red.opacity(0.9))
-                    .cornerRadius(16)
-                    .padding(.top, 6)
+                    .cornerRadius(10)
+                    .padding(.top, 4)
                 }
 
                 Spacer()
 
-                // Thông báo trạng thái nhanh
+                // Thông báo Toast ngắn
                 if showToast {
                     Text(statusToast)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(Color.black.opacity(0.92))
                         .cornerRadius(18)
                         .padding(.bottom, 10)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(.scale.combined(with: .opacity))
                 }
 
-                // ==========================================
-                // 2. BẢNG ĐIỀU KHIỂN NẰM SÁT VIỀN DƯỚI
-                // ==========================================
-                VStack(spacing: 8) {
-                    // Bảng thông số HBIM
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("ĐIỂM LIÊN KẾT")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.gray)
-                            Text("\(scanner.vertexCount.formatted())")
-                                .font(.system(size: 15, weight: .black, design: .monospaced))
-                                .foregroundColor(.green)
+                // THANH ĐIỀU KHIỂN DƯỚI CÙNG: ÉP SÁT ĐÁY MÀN HÌNH (TRÀN QUA THANH VUỐT HOME BAR)
+                VStack(spacing: 6) {
+                    // Dòng chỉ số kỹ thuật HBIM thu gọn 1 hàng duy nhất
+                    HStack {
+                        HStack(spacing: 3) {
+                            Circle().fill(Color.green).frame(width: 5, height: 5)
+                            Text("ĐIỂM: \(scanner.vertexCount.formatted())")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
                         }
-
-                        Divider().frame(height: 22).background(Color.gray.opacity(0.4))
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("LƯỚI TAM GIÁC")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.gray)
-                            Text("\(scanner.faceCount.formatted())")
-                                .font(.system(size: 15, weight: .black, design: .monospaced))
-                                .foregroundColor(.yellow)
-                        }
-
-                        Divider().frame(height: 22).background(Color.gray.opacity(0.4))
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("SAI SỐ HBIM")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.gray)
-                            Text("±\(String(format: "%.1f", scanner.accuracyErrorMM)) mm")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(scanner.accuracyErrorMM <= 1.5 ? .green : .orange)
-                        }
-
                         Spacer()
+                        HStack(spacing: 3) {
+                            Circle().fill(Color.yellow).frame(width: 5, height: 5)
+                            Text("LƯỚI: \(scanner.faceCount.formatted())")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                        }
+                        Spacer()
+                        Text("HBIM: ±\(String(format: "%.1f", scanner.accuracyErrorMM))mm")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(scanner.accuracyErrorMM <= 1.5 ? .green : .orange)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color(white: 0.12))
-                    .cornerRadius(8)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.12))
+                    .cornerRadius(6)
 
-                    // 4 Nút điều khiển chính
-                    HStack(spacing: 8) {
-                        // Nút Tạm Dừng / Bắt Đầu
+                    // 4 phím chức năng cốt lõi
+                    HStack(spacing: 6) {
+                        // Nút Tạm Dừng / Quét Tiếp
                         Button(action: {
                             if scanner.isScanning {
                                 scanner.stopSession()
@@ -210,22 +186,18 @@ struct ContentView: View {
                                 Image(systemName: scanner.isScanning ? "pause.fill" : "play.fill")
                                 Text(scanner.isScanning ? "Tạm Dừng" : "Bắt Đầu")
                             }
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 9)
                             .background(scanner.isScanning ? Color.orange : Color.blue)
                             .foregroundColor(.white)
                             .cornerRadius(8)
                         }
 
-                        // Nút ĐỒNG BỘ
+                        // Nút Đồng Bộ & Ghép Hợp Nhất lên Laptop
                         Button(action: {
                             scanner.uploadToServer(serverIP: serverIP) { success, msg in
-                                statusToast = msg
-                                withAnimation { showToast = true }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                    withAnimation { showToast = false }
-                                }
+                                showNotification(msg)
                             }
                         }) {
                             HStack(spacing: 4) {
@@ -236,106 +208,149 @@ struct ContentView: View {
                                     Text("Đồng Bộ")
                                 }
                             }
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 9)
                             .background(Color.green)
                             .foregroundColor(.white)
                             .cornerRadius(8)
                         }
-                        .disabled(scanner.isUploading || scanner.vertexCount == 0)
 
-                        // Nút Live Stream
+                        // Nút Live Stream Trực Tiếp
                         Button(action: {
                             scanner.toggleLiveStream(serverIP: serverIP)
+                            showNotification(scanner.isLiveStreaming ? "Đang truyền trực tiếp tới Laptop" : "Đã tắt truyền trực tiếp")
                         }) {
-                            Image(systemName: scanner.isLiveStreaming ? "antenna.radiowaves.left.and.right.circle.fill" : "antenna.radiowaves.left.and.right")
-                                .font(.system(size: 14, weight: .bold))
-                                .padding(10)
-                                .background(scanner.isLiveStreaming ? Color.red : Color(white: 0.18))
+                            Image(systemName: scanner.isLiveStreaming ? "antenna.radiowaves.left.and.right" : "dot.radiowaves.left.and.right")
+                                .font(.system(size: 13, weight: .bold))
+                                .frame(width: 42, height: 34)
+                                .background(scanner.isLiveStreaming ? Color.red : Color.white.opacity(0.2))
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
                         }
 
-                        // Nút Chia sẻ file PLY
+                        // Nút Chia Sẻ File
                         Button(action: {
                             scanner.sharePLYFile()
                         }) {
                             Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 14, weight: .bold))
-                                .padding(10)
-                                .background(Color(white: 0.18))
+                                .font(.system(size: 13, weight: .bold))
+                                .frame(width: 42, height: 34)
+                                .background(Color.white.opacity(0.2))
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
                         }
-                        .disabled(scanner.vertexCount == 0)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 20) // Nằm sát mép đáy màn hình
-                .background(Color.black.opacity(0.88))
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 28) // Ôm sát thanh điều hướng đáy của iPhone
+                .background(Color.black.opacity(0.85))
             }
-            .ignoresSafeArea(.all)
+            .edgesIgnoringSafeArea(.all)
         }
-        .edgesIgnoringSafeArea(.all)
         .sheet(isPresented: $showingSettings) {
-            NavigationView {
-                Form {
-                    Section(header: Text("Kết nối Đồng Bộ Laptop")) {
-                        HStack {
-                            Button("Cáp USB (172.20.10.2)") {
-                                serverIP = "172.20.10.2"
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.blue)
+            SettingsSheet(scanner: scanner, serverIP: $serverIP, onDismiss: { showingSettings = false })
+        }
+    }
 
-                            Button("WiFi (192.168.1.8)") {
-                                serverIP = "192.168.1.8"
-                            }
-                            .buttonStyle(.bordered)
+    private func showNotification(_ text: String) {
+        statusToast = text
+        withAnimation { showToast = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) {
+            withAnimation { showToast = false }
+        }
+    }
+}
+
+// MARK: - Màn hình Cài Đặt Kết Nối Mạng (Hỗ trợ Cáp USB & WiFi)
+struct SettingsSheet: View {
+    @ObservedObject var scanner: ARScannerManager
+    @Binding var serverIP: String
+    var onDismiss: () -> Void
+    @State private var testing = false
+    @State private var testResult = ""
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Kết nối Đồng Bộ Laptop")) {
+                    HStack {
+                        Button("Cáp USB (172.20.10.2)") {
+                            serverIP = "172.20.10.2"
                         }
-                        .padding(.vertical, 4)
+                        .buttonStyle(.borderedProminent)
+                        .tint(serverIP == "172.20.10.2" ? .blue : .gray)
 
-                        TextField("Địa chỉ IP Laptop:Port", text: $serverIP)
-                            .keyboardType(.numbersAndPunctuation)
+                        Spacer()
 
-                        Button(action: {
-                            scanner.testConnection(serverIP: serverIP) { success, msg in
-                                statusToast = msg
-                                withAnimation { showToast = true }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-                                    withAnimation { showToast = false }
-                                }
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: "network")
-                                Text("Kiểm tra kết nối tới Laptop")
-                            }
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.blue)
+                        Button("WiFi (192.168.1.8)") {
+                            serverIP = "192.168.1.8"
                         }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("💡 HƯỚNG DẪN KẾT NỐI:")
-                                .font(.caption).bold().foregroundColor(.orange)
-                            Text("• Nếu dùng Wi-Fi: Hãy chắc chắn iPhone đang BẬT WI-FI và cùng mạng với Laptop (không dùng 4G LTE).")
-                                .font(.caption).foregroundColor(.gray)
-                            Text("• Nếu dùng Cáp USB: Bật 'Điểm truy cập cá nhân' trên iPhone -> Chọn nút Cáp USB (172.20.10.2).")
-                                .font(.caption).foregroundColor(.gray)
-                        }
-                        .padding(.vertical, 4)
+                        .buttonStyle(.borderedProminent)
+                        .tint(serverIP == "192.168.1.8" ? .blue : .gray)
                     }
 
-                    Section(header: Text("Tối ưu Độ chính xác")) {
-                        Toggle("Đánh dấu ĐỎ vùng thiếu/chưa quét", isOn: $scanner.highlightMissing)
-                        Toggle("Lọc mượt nhiễu LiDAR (Smoothing)", isOn: $scanner.enableSmoothing)
+                    TextField("Địa chỉ IP Máy chủ Laptop", text: $serverIP)
+                        .keyboardType(.numbersAndPunctuation)
+                        .font(.system(.body, design: .monospaced))
+
+                    Button(action: {
+                        testing = true
+                        testResult = "Đang kiểm tra kết nối..."
+                        scanner.testConnection(serverIP: serverIP) { success, msg in
+                            testing = false
+                            testResult = msg
+                        }
+                    }) {
+                        HStack {
+                            if testing {
+                                ProgressView()
+                                    .padding(.trailing, 4)
+                            }
+                            Text("Kiểm tra kết nối tới Laptop")
+                        }
+                    }
+
+                    if !testResult.isEmpty {
+                        Text(testResult)
+                            .font(.system(size: 12))
+                            .foregroundColor(scanner.isConnectedToLaptop ? .green : .red)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("💡 Mẹo cắm cáp USB: Trên iPhone bật 'Điểm truy cập cá nhân' -> Laptop sẽ nhận mạng USB độ trễ 1ms.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text("💡 Mẹo WiFi: iPhone và Laptop phải bắt cùng một mạng WiFi.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 4)
+                }
+
+                Section(header: Text("Tùy chọn Khảo sát 3D Di tích")) {
+                    Toggle("Cảnh báo vùng thưa điểm (Đỏ)", isOn: $scanner.highlightMissing)
+                    Toggle("Tự động đồng bộ liên tục", isOn: $scanner.autoSyncEnabled)
+                }
+
+                Section(header: Text("Thông tin Ứng dụng")) {
+                    HStack {
+                        Text("Dự án")
+                        Spacer()
+                        Text("HBIM Cố Đô Huế")
+                            .foregroundColor(.secondary)
+                    }
+                    HStack {
+                        Text("Phiên bản")
+                        Spacer()
+                        Text("v1.3 - Multi-Scan Master ICP")
+                            .foregroundColor(.secondary)
                     }
                 }
-                .navigationTitle("Cài Đặt Kết Nối")
-                .navigationBarItems(trailing: Button("Xong") { showingSettings = false })
             }
+            .navigationBarTitle("Cài Đặt", displayMode: .inline)
+            .navigationBarItems(trailing: Button("Xong") { onDismiss() })
         }
     }
 }
