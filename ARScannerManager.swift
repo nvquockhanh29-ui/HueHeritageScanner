@@ -154,16 +154,15 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate {
 
 private extension ARGeometrySource {
     subscript(index: Int) -> simd_float3 {
-        let byteStride = self.stride
-        let pointer = buffer.contents().advanced(by: offset + (byteStride * index))
+        let pointer = buffer.contents().advanced(by: offset + (self.stride * index))
         return pointer.assumingMemoryBound(to: simd_float3.self).pointee
     }
 }
 
 private extension ARGeometryElement {
     subscript(faceIndex: Int, vertexIndex: Int) -> Int32 {
-        let byteStride = self.stride
-        let pointer = buffer.contents().advanced(by: (faceIndex * byteStride) + (vertexIndex * MemoryLayout<Int32>.size))
+        let faceStride = self.bytesPerIndex * self.indexCountPerPrimitive
+        let pointer = buffer.contents().advanced(by: (faceIndex * faceStride) + (vertexIndex * self.bytesPerIndex))
         return pointer.assumingMemoryBound(to: Int32.self).pointee
     }
 }
