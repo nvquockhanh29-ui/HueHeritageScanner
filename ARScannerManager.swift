@@ -18,9 +18,11 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     @Published var accuracyErrorMM: Double = 1.8 // Sai số khảo sát HBIM
     @Published var missingAreaCount: Int = 0    // Số vùng thưa điểm phát hiện
     @Published var isTorchOn = false            // Trạng thái đèn Flash
+    @Published var isConnectedToLaptop = false  // Trạng thái kết nối máy chủ
+    @Published var connectionStatusMsg = "Chưa kiểm tra kết nối"
 
     var arView: ARSCNView?
-    // Lưu trữ toàn bộ các Anchor đã phát hiện (KHÔNG BAO GIỜ BỊ RESET VỀ 0)
+    // Bộ nhớ đệm vĩnh viễn (TUYỆT ĐỐI KHÔNG XÓA KHI DI CHUYỂN, BẢO TOÀN DỮ LIỆU 100%)
     private var allMeshAnchors: [UUID: ARMeshAnchor] = [:]
     private var meshNodes: [UUID: SCNNode] = [:]
     private var liveStreamTimer: Timer?
@@ -36,7 +38,13 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
 
         arView?.session.delegate = self
         arView?.delegate = self
-        arView?.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        
+        // Không xóa dữ liệu cũ khi tiếp tục phiên quét
+        if allMeshAnchors.isEmpty {
+            arView?.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        } else {
+            arView?.session.run(configuration, options: [])
+        }
         isScanning = true
     }
 
@@ -47,6 +55,21 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         if isTorchOn {
             toggleTorch()
         }
+    }
+
+    // Xóa sạch để quét lại từ đầu khi người dùng chủ động yêu cầu
+    func resetScan() {
+        allMeshAnchors.removeAll()
+        meshNodes.removeAll()
+        vertexCount = 0
+        faceCount = 0
+        missingAreaCount = 0
+        coverageQuality = "Chưa quét"
+        let configuration = ARWorldTrackingConfiguration()
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) {
+            configuration.sceneReconstruction = .meshWithClassification
+        }
+        arView?.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     }
 
     // MARK: - Điều khiển Đèn Flash (Torch LED)
@@ -64,11 +87,11 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             }
             device.unlockForConfiguration()
         } catch {
-            print("Không thể bật đèn Flash: \(error)")
+            print("Lỗi bật flash: \(error)")
         }
     }
 
-    // MARK: - ARSCNViewDelegate: Hiển thị lưới Wireframe & Cảnh báo ĐỎ vùng chưa quét
+    // MARK: - ARSCNViewDelegate
     func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
         guard let meshAnchor = anchor as? ARMeshAnchor else { return nil }
         allMeshAnchors[meshAnchor.identifier] = meshAnchor
@@ -89,30 +112,27 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     }
 
     func renderer(_ renderer: SCNSceneRenderer, didRemove node: SCNNode, for anchor: ARAnchor) {
+        // KHÔNG XÓA KHỎI allMeshAnchors để bảo toàn dữ liệu quét, chỉ thu hồi node hiển thị
         if let meshAnchor = anchor as? ARMeshAnchor {
-            allMeshAnchors.removeValue(forKey: meshAnchor.identifier)
             meshNodes.removeValue(forKey: meshAnchor.identifier)
-            updateMeshMetrics()
         }
     }
 
     private func createVisualizationGeometry(meshAnchor: ARMeshAnchor) -> SCNGeometry {
         let scnGeom = SCNGeometry(arMeshGeometry: meshAnchor.geometry)
         let material = SCNMaterial()
-        material.fillMode = .lines // Chế độ lưới 3D Wireframe đè lên vật thể
+        material.fillMode = .lines
         material.isDoubleSided = true
 
         let vCount = meshAnchor.geometry.vertices.count
 
-        // Phân tích mật độ:
-        // Vùng thưa điểm (< 400 đỉnh) -> TÔ ĐỎ CẢNH BÁO (vùng chưa quét kỹ)
-        // Vùng đủ điểm (>= 400 đỉnh) -> TÔ XANH LÁ CÂY (đạt chuẩn)
+        // Phân tích mật độ: Vùng thưa điểm (< 400 đỉnh) -> TÔ ĐỎ CẢNH BÁO
         if highlightMissing && vCount < 400 {
             material.diffuse.contents = UIColor.systemRed.withAlphaComponent(0.9)
-            material.emission.contents = UIColor.systemRed.withAlphaComponent(0.4)
+            material.emission.contents = UIColor.red.withAlphaComponent(0.4)
         } else {
             material.diffuse.contents = UIColor.systemGreen.withAlphaComponent(0.85)
-            material.emission.contents = UIColor.systemGreen.withAlphaComponent(0.2)
+            material.emission.contents = UIColor.green.withAlphaComponent(0.2)
         }
 
         scnGeom.materials = [material]
@@ -159,7 +179,31 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    // MARK: - Đồng bộ thời gian thực (Real-time Live Stream)
+    // MARK: - Kiểm tra kết nối tới Laptop
+    func testConnection(serverIP: String, completion: @escaping (Bool, String) -> Void) {
+        guard let url = URL(string: "http://\(serverIP):8000/api/models") else {
+            completion(false, "Địa chỉ IP không hợp lệ")
+            return
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 3
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+                    self?.isConnectedToLaptop = true
+                    self?.connectionStatusMsg = "Đã kết nối thành công tới \(serverIP):8000"
+                    completion(true, "Đã kết nối thành công!")
+                } else {
+                    self?.isConnectedToLaptop = false
+                    self?.connectionStatusMsg = "Không tìm thấy Laptop. Hãy kiểm tra kết nối WiFi hoặc cáp USB."
+                    completion(false, "Không kết nối được: Hãy bật Wi-Fi (cùng mạng Laptop) hoặc cắm cáp USB (172.20.10.2)")
+                }
+            }
+        }.resume()
+    }
+
+    // MARK: - Đồng bộ thời gian thực (Live Stream)
     func toggleLiveStream(serverIP: String) {
         if isLiveStreaming {
             stopLiveStream()
@@ -240,7 +284,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    // MARK: - Mở bảng chia sẻ file chuẩn iOS (AirDrop, Files, Zalo, ...)
+    // MARK: - Mở bảng chia sẻ file chuẩn iOS
     func sharePLYFile() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self, let url = self.exportToPLY() else { return }
@@ -264,7 +308,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    // MARK: - Gửi tệp lên Laptop (Xử lý ngầm, không nghẽn giao diện)
+    // MARK: - Gửi tệp lên Laptop
     func uploadToServer(serverIP: String, isBackgroundStream: Bool = false, completion: @escaping (Bool, String) -> Void) {
         if !isBackgroundStream {
             isUploading = true
@@ -282,7 +326,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             let uploadURL = URL(string: "http://\(serverIP):8000/api/upload")!
             var request = URLRequest(url: uploadURL)
             request.httpMethod = "POST"
-            request.timeoutInterval = 8
+            request.timeoutInterval = 6
 
             let boundary = "Boundary-\(UUID().uuidString)"
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -302,9 +346,11 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                         self.isUploading = false
                     }
                     if let error = error {
-                        completion(false, "Lỗi: \(error.localizedDescription)")
+                        self.isConnectedToLaptop = false
+                        completion(false, "Không kết nối được: Hãy bật Wi-Fi (cùng mạng Laptop) hoặc cắm cáp USB")
                         return
                     }
+                    self.isConnectedToLaptop = true
                     completion(true, "Đồng bộ thành công!")
                 }
             }
