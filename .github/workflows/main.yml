@@ -14,13 +14,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Select Xcode 16
+        run: |
+          sudo xcode-select -switch /Applications/Xcode_16.app || sudo xcode-select -switch /Applications/Xcode.app
+          xcodebuild -version
+
       - name: Setup Project and Compile
         run: |
           cat << 'EOF' > project.yml
           name: HueHeritageScanner
           options:
             bundleIdPrefix: com.vietsoftpro
-            xcodeVersion: "15.0"
             deploymentTarget:
               iOS: "16.0"
           targets:
@@ -39,12 +43,13 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Build App via Xcodebuild
+      - name: Build and Export App
         run: |
           xcodebuild -project HueHeritageScanner.xcodeproj \
                      -scheme HueHeritageScanner \
                      -sdk iphoneos \
                      -configuration Release \
+                     -destination "generic/platform=iOS" \
                      build \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
@@ -53,11 +58,11 @@ jobs:
       - name: Package into IPA
         run: |
           mkdir -p Payload
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "HueHeritageScanner.app" | head -n 1)
-          echo "Found app at: $APP_PATH"
-          cp -r "$APP_PATH" Payload/
+          APP_DIR=$(find ~/Library/Developer/Xcode/DerivedData -name "HueHeritageScanner.app" -type d | head -n 1)
+          echo "Found app at: $APP_DIR"
+          cp -r "$APP_DIR" Payload/
           zip -r HueHeritageScanner.ipa Payload
-          echo "✅ Packaging IPA complete!"
+          echo "✅ Đã đóng gói thành công tệp IPA!"
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
