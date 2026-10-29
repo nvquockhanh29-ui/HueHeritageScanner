@@ -31,6 +31,7 @@ jobs:
                 -framework ARKit \
                 -framework SceneKit \
                 -framework Combine \
+                -framework Metal \
                 HueHeritageScannerApp.swift \
                 ARScannerManager.swift \
                 ContentView.swift \
