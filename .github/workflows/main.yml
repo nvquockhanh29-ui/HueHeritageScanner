@@ -8,15 +8,15 @@ on:
 jobs:
   build-ios:
     name: Build Unsigned IPA on Cloud Mac
-    runs-on: macos-14
+    runs-on: macos-13
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Xcode 16
+      - name: Setup Xcode
         run: |
-          sudo xcode-select -switch /Applications/Xcode_16.app || sudo xcode-select -switch /Applications/Xcode.app
+          sudo xcode-select -switch /Applications/Xcode_15.2.app || sudo xcode-select -switch /Applications/Xcode.app
           xcodebuild -version
 
       - name: Compile Swift App directly
