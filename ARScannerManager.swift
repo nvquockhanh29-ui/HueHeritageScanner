@@ -59,7 +59,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate {
         let fileName = "HueHeritage_\(Int(Date().timeIntervalSince1970)).ply"
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
 
-        var plyHeader = """
+        let plyHeader = """
         ply
         format ascii 1.0
         comment Huế Heritage Scanner - R&D 04 Digital Twin
@@ -84,7 +84,6 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate {
             let vertices = geometry.vertices
             for i in 0..<vertices.count {
                 let vertex = vertices[i]
-                // Chuyển đổi tọa độ cục bộ sang tọa độ thế giới thực
                 let localCoord = simd_float4(vertex[0], vertex[1], vertex[2], 1.0)
                 let worldCoord = simd_mul(transform, localCoord)
                 vertexData += String(format: "%.4f %.4f %.4f\n", worldCoord.x, worldCoord.y, worldCoord.z)
@@ -92,12 +91,10 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate {
 
             let faces = geometry.faces
             for i in 0..<faces.count {
-                let indices = [
-                    faces[i, 0] + Int32(vertexOffset),
-                    faces[i, 1] + Int32(vertexOffset),
-                    faces[i, 2] + Int32(vertexOffset)
-                ]
-                faceData += "3 \(indices[0]) \(indices[1]) \(indices[2])\n"
+                let idx0 = Int(faces[i, 0]) + vertexOffset
+                let idx1 = Int(faces[i, 1]) + vertexOffset
+                let idx2 = Int(faces[i, 2]) + vertexOffset
+                faceData += "3 \(idx0) \(idx1) \(idx2)\n"
             }
 
             vertexOffset += vertices.count
@@ -157,14 +154,16 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate {
 
 private extension ARGeometrySource {
     subscript(index: Int) -> simd_float3 {
-        let pointer = buffer.contents().advanced(by: offset + (stride * index))
+        let byteStride = self.stride
+        let pointer = buffer.contents().advanced(by: offset + (byteStride * index))
         return pointer.assumingMemoryBound(to: simd_float3.self).pointee
     }
 }
 
 private extension ARGeometryElement {
     subscript(faceIndex: Int, vertexIndex: Int) -> Int32 {
-        let pointer = buffer.contents().advanced(by: (faceIndex * stride) + (vertexIndex * MemoryLayout<Int32>.size))
+        let byteStride = self.stride
+        let pointer = buffer.contents().advanced(by: (faceIndex * byteStride) + (vertexIndex * MemoryLayout<Int32>.size))
         return pointer.assumingMemoryBound(to: Int32.self).pointee
     }
 }
