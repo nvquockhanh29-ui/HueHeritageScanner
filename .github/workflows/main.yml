@@ -9,60 +9,39 @@ jobs:
   build-ios:
     name: Build Unsigned IPA on Cloud Mac
     runs-on: macos-14
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Verify Xcode Version
-        run: xcodebuild -version
-
-      - name: Setup Project via Xcodegen
+      - name: Setup Xcode 16
         run: |
-          cat << 'EOF' > project.yml
-          name: HueHeritageScanner
-          options:
-            bundleIdPrefix: com.vietsoftpro
-            deploymentTarget:
-              iOS: "16.0"
-          targets:
-            HueHeritageScanner:
-              type: application
-              platform: iOS
-              deploymentTarget: "16.0"
-              sources: [.]
-              info:
-                path: Info.plist
-                properties:
-                  CFBundleDisplayName: "Huế Scanner"
-                  NSCameraUsageDescription: "Quét 3D LiDAR bảo tồn di tích"
-          EOF
+          sudo xcode-select -switch /Applications/Xcode_16.app || sudo xcode-select -switch /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Compile Swift App directly
+        run: |
+          mkdir -p Payload/HueHeritageScanner.app
           
-          brew install xcodegen
-          xcodegen generate
-
-      - name: Build App
-        run: |
-          xcodebuild -project HueHeritageScanner.xcodeproj \
-                     -scheme HueHeritageScanner \
-                     -sdk iphoneos \
-                     -configuration Release \
-                     -destination "generic/platform=iOS" \
-                     build \
-                     CODE_SIGN_IDENTITY="" \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=NO
-
-      - name: Package into IPA
-        run: |
-          mkdir -p Payload
-          APP_DIR=$(find ~/Library/Developer/Xcode/DerivedData -name "HueHeritageScanner.app" -type d | head -n 1)
-          echo "Found app at: $APP_DIR"
-          cp -r "$APP_DIR" Payload/
+          # Biên dịch trực tiếp Swift cho chip Apple ARM64 (iPhone)
+          xcrun -sdk iphoneos swiftc \
+                -target arm64-apple-ios16.0 \
+                -O \
+                -framework SwiftUI \
+                -framework ARKit \
+                -framework SceneKit \
+                -framework Combine \
+                HueHeritageScannerApp.swift \
+                ARScannerManager.swift \
+                ContentView.swift \
+                -o Payload/HueHeritageScanner.app/HueHeritageScanner
+          
+          # Sao chép Info.plist vào gói ứng dụng
+          cp Info.plist Payload/HueHeritageScanner.app/Info.plist
+          
+          # Đóng gói tệp IPA
           zip -r HueHeritageScanner.ipa Payload
-          echo "✅ Đã đóng gói thành công tệp IPA!"
+          echo "✅ Đã đóng gói thành công tệp IPA trực tiếp!"
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
