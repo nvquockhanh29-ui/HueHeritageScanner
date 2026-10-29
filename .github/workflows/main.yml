@@ -32,13 +32,16 @@ jobs:
                 -framework SceneKit \
                 -framework Combine \
                 -framework Metal \
+                -framework AVFoundation \
                 HueHeritageScannerApp.swift \
                 ARScannerManager.swift \
                 ContentView.swift \
                 -o Payload/HueHeritageScanner.app/HueHeritageScanner
           
-          # Sao chép Info.plist vào gói ứng dụng
+          # Sao chép Info.plist và App Icons vào gói ứng dụng
           cp Info.plist Payload/HueHeritageScanner.app/Info.plist
+          cp AppIcon*.png Payload/HueHeritageScanner.app/ 2>/dev/null || true
+          cp iTunesArtwork.png Payload/HueHeritageScanner.app/ 2>/dev/null || true
           
           # Đóng gói tệp IPA
           zip -r HueHeritageScanner.ipa Payload
