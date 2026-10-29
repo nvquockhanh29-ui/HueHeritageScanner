@@ -9,17 +9,17 @@ jobs:
   build-ios:
     name: Build Unsigned IPA on Cloud Mac
     runs-on: macos-14
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16
-        run: |
-          sudo xcode-select -switch /Applications/Xcode_16.app || sudo xcode-select -switch /Applications/Xcode.app
-          xcodebuild -version
+      - name: Verify Xcode Version
+        run: xcodebuild -version
 
-      - name: Setup Project and Compile
+      - name: Setup Project via Xcodegen
         run: |
           cat << 'EOF' > project.yml
           name: HueHeritageScanner
@@ -43,7 +43,7 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Build and Export App
+      - name: Build App
         run: |
           xcodebuild -project HueHeritageScanner.xcodeproj \
                      -scheme HueHeritageScanner \
