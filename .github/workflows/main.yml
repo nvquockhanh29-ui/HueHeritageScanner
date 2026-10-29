@@ -1,0 +1,70 @@
+name: Build Hue Heritage Scanner IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-ios:
+    name: Build Unsigned IPA on Cloud Mac
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 15/16
+        run: |
+          sudo xcode-select -switch /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Setup Project and Compile
+        run: |
+          cat << 'EOF' > project.yml
+          name: HueHeritageScanner
+          options:
+            bundleIdPrefix: com.vietsoftpro
+            deploymentTarget:
+              iOS: "16.0"
+          targets:
+            HueHeritageScanner:
+              type: application
+              platform: iOS
+              deploymentTarget: "16.0"
+              sources: [.]
+              info:
+                path: Info.plist
+                properties:
+                  CFBundleDisplayName: "Huế Scanner"
+                  NSCameraUsageDescription: "Quét 3D LiDAR bảo tồn di tích"
+          EOF
+          
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build Archive (Unsigned)
+        run: |
+          xcodebuild -project HueHeritageScanner.xcodeproj \
+                     -scheme HueHeritageScanner \
+                     -sdk iphoneos \
+                     -configuration Release \
+                     -archivePath "$PWD/build/HueHeritageScanner.xcarchive" \
+                     archive \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO
+
+      - name: Package into IPA
+        run: |
+          mkdir -p "$PWD/build/Payload"
+          cp -r "$PWD/build/HueHeritageScanner.xcarchive/Products/Applications/HueHeritageScanner.app" "$PWD/build/Payload/"
+          cd "$PWD/build"
+          zip -r HueHeritageScanner.ipa Payload
+          echo "Done packaging!"
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HueHeritageScanner-v1.0-IPA
+          path: build/HueHeritageScanner.ipa
