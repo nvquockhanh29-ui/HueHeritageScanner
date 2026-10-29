@@ -36,40 +36,40 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            // CAMERA TRÀN VIỀN 100% TOÀN MÀN HÌNH (KHÔNG VIỀN ĐEN, KHÔNG MÀN HÌNH CO NHỎ)
+            // CAMERA TRÀN VIỀN 100% TOÀN MÀN HÌNH
             ARViewContainer(manager: scanner)
                 .ignoresSafeArea(.all)
 
-            // LỚP ĐIỀU KHIỂN NỔI: TOP BAR VÀ BOTTOM BAR RÕ NÉT
+            // GIAO DIỆN ĐIỀU KHIỂN: SÁT VIỀN TRÊN VÀ SÁT VIỀN DƯỚI
             VStack(spacing: 0) {
                 // ==========================================
-                // 1. THANH TRÊN CÙNG (TOP BAR)
+                // 1. THANH TIÊU ĐỀ NẰM SÁT VIỀN TRÊN
                 // ==========================================
                 HStack(spacing: 8) {
                     // Badge Digital Twin màu cam nổi bật
                     Text("DIGITAL TWIN")
-                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .font(.system(size: 12, weight: .black, design: .rounded))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: 5)
                                 .fill(Color.orange)
                         )
 
                     Text("HUẾ HERITAGE")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(.white)
 
                     if scanner.isLiveStreaming {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.red).frame(width: 7, height: 7)
+                        HStack(spacing: 3) {
+                            Circle().fill(Color.red).frame(width: 6, height: 6)
                             Text("LIVE")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 9, weight: .black))
                                 .foregroundColor(.red)
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
                         .background(Color.white.opacity(0.15))
                         .cornerRadius(4)
                     }
@@ -81,14 +81,14 @@ struct ContentView: View {
                         scanner.toggleTorch()
                     }) {
                         Image(systemName: scanner.isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundColor(scanner.isTorchOn ? .yellow : .white)
-                            .padding(9)
+                            .padding(8)
                             .background(scanner.isTorchOn ? Color.yellow.opacity(0.3) : Color.black.opacity(0.6))
                             .clipShape(Circle())
                     }
 
-                    // NÚT XÓA QUÉT LẠI (RESET)
+                    // NÚT RESET QUÉT LẠI
                     Button(action: {
                         scanner.resetScan()
                         statusToast = "Đã làm mới dữ liệu quét"
@@ -98,9 +98,9 @@ struct ContentView: View {
                         }
                     }) {
                         Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(.white)
-                            .padding(9)
+                            .padding(8)
                             .background(Color.black.opacity(0.6))
                             .clipShape(Circle())
                     }
@@ -108,39 +108,33 @@ struct ContentView: View {
                     // NÚT CÀI ĐẶT
                     Button(action: { showingSettings.toggle() }) {
                         Image(systemName: "gearshape.fill")
-                            .font(.system(size: 16))
+                            .font(.system(size: 15))
                             .foregroundColor(.white)
-                            .padding(9)
+                            .padding(8)
                             .background(Color.black.opacity(0.6))
                             .clipShape(Circle())
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 48)
-                .padding(.bottom, 12)
-                .background(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.85), Color.black.opacity(0.4), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .padding(.top, 42) // Đặt sát mép trên vừa khít dưới đồng hồ
+                .padding(.bottom, 6)
+                .background(Color.black.opacity(0.85))
 
                 // Cảnh báo vùng thưa điểm
                 if scanner.missingAreaCount > 0 && scanner.highlightMissing {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.yellow)
-                            .font(.system(size: 12))
+                            .font(.system(size: 11))
                         Text("Phát hiện \(scanner.missingAreaCount) vùng thưa điểm (Đang đánh dấu ĐỎ)")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.white)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.red.opacity(0.85))
-                    .cornerRadius(20)
-                    .padding(.top, 8)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.red.opacity(0.9))
+                    .cornerRadius(16)
+                    .padding(.top, 6)
                 }
 
                 Spacer()
@@ -151,56 +145,56 @@ struct ContentView: View {
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 9)
-                        .background(Color.black.opacity(0.9))
-                        .cornerRadius(20)
-                        .padding(.bottom, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.92))
+                        .cornerRadius(18)
+                        .padding(.bottom, 10)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
                 // ==========================================
-                // 2. THANH DƯỚI CÙNG (BOTTOM BAR)
+                // 2. BẢNG ĐIỀU KHIỂN NẰM SÁT VIỀN DƯỚI
                 // ==========================================
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     // Bảng thông số HBIM
-                    HStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 1) {
                             Text("ĐIỂM LIÊN KẾT")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(.gray)
                             Text("\(scanner.vertexCount.formatted())")
-                                .font(.system(size: 17, weight: .black, design: .monospaced))
+                                .font(.system(size: 15, weight: .black, design: .monospaced))
                                 .foregroundColor(.green)
                         }
 
-                        Divider().frame(height: 25).background(Color.gray.opacity(0.4))
+                        Divider().frame(height: 22).background(Color.gray.opacity(0.4))
 
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 1) {
                             Text("LƯỚI TAM GIÁC")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(.gray)
                             Text("\(scanner.faceCount.formatted())")
-                                .font(.system(size: 17, weight: .black, design: .monospaced))
+                                .font(.system(size: 15, weight: .black, design: .monospaced))
                                 .foregroundColor(.yellow)
                         }
 
-                        Divider().frame(height: 25).background(Color.gray.opacity(0.4))
+                        Divider().frame(height: 22).background(Color.gray.opacity(0.4))
 
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 1) {
                             Text("SAI SỐ HBIM")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 8, weight: .bold))
                                 .foregroundColor(.gray)
                             Text("±\(String(format: "%.1f", scanner.accuracyErrorMM)) mm")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(scanner.accuracyErrorMM <= 1.5 ? .green : .orange)
                         }
 
                         Spacer()
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color.black.opacity(0.75))
-                    .cornerRadius(10)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color(white: 0.12))
+                    .cornerRadius(8)
 
                     // 4 Nút điều khiển chính
                     HStack(spacing: 8) {
@@ -212,16 +206,16 @@ struct ContentView: View {
                                 scanner.startSession()
                             }
                         }) {
-                            HStack(spacing: 5) {
+                            HStack(spacing: 4) {
                                 Image(systemName: scanner.isScanning ? "pause.fill" : "play.fill")
                                 Text(scanner.isScanning ? "Tạm Dừng" : "Bắt Đầu")
                             }
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 10)
                             .background(scanner.isScanning ? Color.orange : Color.blue)
                             .foregroundColor(.white)
-                            .cornerRadius(10)
+                            .cornerRadius(8)
                         }
 
                         // Nút ĐỒNG BỘ
@@ -234,7 +228,7 @@ struct ContentView: View {
                                 }
                             }
                         }) {
-                            HStack(spacing: 5) {
+                            HStack(spacing: 4) {
                                 if scanner.isUploading {
                                     ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 } else {
@@ -242,12 +236,12 @@ struct ContentView: View {
                                     Text("Đồng Bộ")
                                 }
                             }
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
+                            .padding(.vertical, 10)
                             .background(Color.green)
                             .foregroundColor(.white)
-                            .cornerRadius(10)
+                            .cornerRadius(8)
                         }
                         .disabled(scanner.isUploading || scanner.vertexCount == 0)
 
@@ -256,11 +250,11 @@ struct ContentView: View {
                             scanner.toggleLiveStream(serverIP: serverIP)
                         }) {
                             Image(systemName: scanner.isLiveStreaming ? "antenna.radiowaves.left.and.right.circle.fill" : "antenna.radiowaves.left.and.right")
-                                .font(.system(size: 15, weight: .bold))
-                                .padding(12)
-                                .background(scanner.isLiveStreaming ? Color.red : Color.black.opacity(0.65))
+                                .font(.system(size: 14, weight: .bold))
+                                .padding(10)
+                                .background(scanner.isLiveStreaming ? Color.red : Color(white: 0.18))
                                 .foregroundColor(.white)
-                                .cornerRadius(10)
+                                .cornerRadius(8)
                         }
 
                         // Nút Chia sẻ file PLY
@@ -268,25 +262,19 @@ struct ContentView: View {
                             scanner.sharePLYFile()
                         }) {
                             Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 15, weight: .bold))
-                                .padding(12)
-                                .background(Color.black.opacity(0.65))
+                                .font(.system(size: 14, weight: .bold))
+                                .padding(10)
+                                .background(Color(white: 0.18))
                                 .foregroundColor(.white)
-                                .cornerRadius(10)
+                                .cornerRadius(8)
                         }
                         .disabled(scanner.vertexCount == 0)
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 36)
-                .background(
-                    LinearGradient(
-                        colors: [Color.clear, Color.black.opacity(0.6), Color.black.opacity(0.9)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .padding(.top, 8)
+                .padding(.bottom, 20) // Nằm sát mép đáy màn hình
+                .background(Color.black.opacity(0.88))
             }
             .ignoresSafeArea(.all)
         }
