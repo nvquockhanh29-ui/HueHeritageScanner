@@ -1,0 +1,73 @@
+name: Build Hue Heritage Scanner IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-ios:
+    name: Build Unsigned IPA on Cloud Mac
+    runs-on: macos-14 # Chạy trên máy Mac Silicon đời mới nhất của GitHub
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 15/16
+        run: |
+          sudo xcode-select -switch /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Create Xcode Project via Swift Package
+        run: |
+          mkdir -p HueHeritageScanner.xcodeproj
+          # Tạo cấu trúc project tự động để biên dịch
+          cat << 'EOF' > project.yml
+          name: HueHeritageScanner
+          options:
+            bundleIdPrefix: com.vietsoftpro
+            deploymentTarget:
+              iOS: "16.0"
+          targets:
+            HueHeritageScanner:
+              type: application
+              platform: iOS
+              deploymentTarget: "16.0"
+              sources: [HueHeritageScanner]
+              info:
+                path: HueHeritageScanner/Info.plist
+                properties:
+                  CFBundleDisplayName: "Huế Scanner"
+                  NSCameraUsageDescription: "Quét 3D LiDAR bảo tồn di tích"
+          EOF
+          
+          # Cài đặt xcodegen nếu chưa có
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build Archive (Unsigned)
+        run: |
+          xcodebuild -project HueHeritageScanner.xcodeproj \
+                     -scheme HueHeritageScanner \
+                     -sdk iphoneos \
+                     -configuration Release \
+                     -archivePath "$PWD/build/HueHeritageScanner.xcarchive" \
+                     archive \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO
+
+      - name: Package into IPA
+        run: |
+          mkdir -p "$PWD/build/Payload"
+          cp -r "$PWD/build/HueHeritageScanner.xcarchive/Products/Applications/HueHeritageScanner.app" "$PWD/build/Payload/"
+          cd "$PWD/build"
+          zip -r HueHeritageScanner.ipa Payload
+          echo "✅ Đã đóng gói thành công tệp IPA!"
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HueHeritageScanner-v1.0-IPA
+          path: build/HueHeritageScanner.ipa
