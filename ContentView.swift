@@ -356,7 +356,7 @@ struct SettingsSheet: View {
                     HStack {
                         Text("Phiên bản")
                         Spacer()
-                        Text("v1.7 - True Letterbox Clean Viewport")
+                        Text("v1.8 - Anti-Crash & Live Color Stream")
                             .foregroundColor(.secondary)
                     }
                 }

@@ -31,8 +31,9 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     private var anchorColors: [UUID: [UInt8]] = [:]
     private var meshNodes: [UUID: SCNNode] = [:]
     
-    // Throttling để tối ưu hiệu năng
+    // Throttling để tối ưu hiệu năng và chống tràn bộ nhớ / văng app
     private var lastMetricsUpdate: TimeInterval = 0
+    private var lastColorSampleTime: TimeInterval = 0
     
     // Kênh WebSocket truyền trực tiếp
     private var webSocketTask: URLSessionWebSocketTask?
@@ -120,19 +121,27 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    // MARK: - ARSessionDelegate: Bắt màu thực từ camera và ghi nhận mesh
+    // MARK: - ARSessionDelegate: Bắt màu thực từ camera và ghi nhận mesh (Chống văng app 100%)
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
-        let currentFrame = session.currentFrame
         let meshList = anchors.compactMap { $0 as? ARMeshAnchor }
         guard !meshList.isEmpty else { return }
+
+        let now = Date().timeIntervalSince1970
+        let shouldSampleColors = (now - lastColorSampleTime > 0.4)
+        let currentFrame = shouldSampleColors ? session.currentFrame : nil
+        if shouldSampleColors {
+            lastColorSampleTime = now
+        }
 
         meshQueue.async { [weak self] in
             guard let self = self else { return }
             for anchor in meshList {
                 self.allMeshAnchors[anchor.identifier] = anchor
-                let colors = self.sampleCameraColors(for: anchor, frame: currentFrame)
-                if !colors.isEmpty {
-                    self.anchorColors[anchor.identifier] = colors
+                if let frame = currentFrame {
+                    let colors = self.sampleCameraColors(for: anchor, frame: frame)
+                    if !colors.isEmpty {
+                        self.anchorColors[anchor.identifier] = colors
+                    }
                 }
             }
             self.throttledUpdateMeshMetrics()
@@ -220,7 +229,11 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
 
     func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
         guard let meshAnchor = anchor as? ARMeshAnchor else { return }
-        node.geometry = createVisualizationGeometry(meshAnchor: meshAnchor)
+        // Tối ưu hóa bộ nhớ: chỉ tạo lại SCNGeometry khi số đỉnh thay đổi đáng kể để chống giật lag và chống văng app
+        let curCount = node.geometry?.sources.first?.vectorCount ?? 0
+        if abs(curCount - meshAnchor.geometry.vertices.count) > 20 {
+            node.geometry = createVisualizationGeometry(meshAnchor: meshAnchor)
+        }
     }
 
     func renderer(_ renderer: SCNSceneRenderer, didRemove node: SCNNode, for anchor: ARAnchor) {
