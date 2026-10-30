@@ -356,7 +356,7 @@ struct SettingsSheet: View {
                     HStack {
                         Text("Phiên bản")
                         Spacer()
-                        Text("v1.8 - Anti-Crash & Live Color Stream")
+                        Text("v1.9 - High-Density Smooth World Tracking")
                             .foregroundColor(.secondary)
                     }
                 }

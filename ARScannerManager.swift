@@ -38,6 +38,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     // Kênh WebSocket truyền trực tiếp
     private var webSocketTask: URLSessionWebSocketTask?
     private var liveStreamTimer: Timer?
+    private var isStreamingBatch = false
     private var currentServerIP: String = "192.168.2.17"
 
     func startSession() {
@@ -121,13 +122,13 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    // MARK: - ARSessionDelegate: Bắt màu thực từ camera và ghi nhận mesh (Chống văng app 100%)
+    // MARK: - ARSessionDelegate: Bắt màu thực từ camera và ghi nhận mesh (Chống văng app 100%, đồng bộ tọa độ thế giới chính xác)
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
         let meshList = anchors.compactMap { $0 as? ARMeshAnchor }
         guard !meshList.isEmpty else { return }
 
         let now = Date().timeIntervalSince1970
-        let shouldSampleColors = (now - lastColorSampleTime > 0.4)
+        let shouldSampleColors = (now - lastColorSampleTime > 0.3)
         let currentFrame = shouldSampleColors ? session.currentFrame : nil
         if shouldSampleColors {
             lastColorSampleTime = now
@@ -145,6 +146,18 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                 }
             }
             self.throttledUpdateMeshMetrics()
+        }
+    }
+
+    func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
+        let meshList = anchors.compactMap { $0 as? ARMeshAnchor }
+        guard !meshList.isEmpty else { return }
+        meshQueue.async { [weak self] in
+            guard let self = self else { return }
+            for a in meshList {
+                self.allMeshAnchors.removeValue(forKey: a.identifier)
+                self.anchorColors.removeValue(forKey: a.identifier)
+            }
         }
     }
 
@@ -351,17 +364,22 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         webSocketTask?.resume()
     }
 
-    // Truyền toàn bộ Mesh bề mặt 3D thực tế theo thời gian thực (Đồng bộ 1:1 với iPhone)
+    // Truyền toàn bộ Mesh bề mặt 3D thực tế theo thời gian thực (Đồng bộ 1:1 với iPhone, không lổ chỗ, cố định tọa độ)
     private func streamLiveMeshBatch() {
-        guard let ws = webSocketTask else { return }
+        guard let ws = webSocketTask, !isStreamingBatch else { return }
+        isStreamingBatch = true
 
         meshQueue.async { [weak self] in
             guard let self = self else { return }
+            defer { self.isStreamingBatch = false }
+
             let anchorsList = Array(self.allMeshAnchors.values)
             guard !anchorsList.isEmpty else { return }
 
-            // Lấy tối đa 30 anchor để phản ánh đầy đủ toàn bộ vật thể/phòng với độ chi tiết cao nhất
-            let activeAnchors = anchorsList.count > 30 ? Array(anchorsList.suffix(30)) : anchorsList
+            // Giữ thứ tự cố định theo UUID để tọa độ đỉnh không bị nhảy xáo trộn
+            let sortedAnchors = anchorsList.sorted { $0.identifier.uuidString < $1.identifier.uuidString }
+            // Truyền lên tới 120 anchor để bao phủ toàn bộ phòng/di tích (loại bỏ hoàn toàn hiện tượng lổ chỗ)
+            let activeAnchors = sortedAnchors.count > 120 ? Array(sortedAnchors.suffix(120)) : sortedAnchors
             
             var allPositions: [Float] = []
             var allColors: [Float] = []
