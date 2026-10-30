@@ -169,9 +169,9 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         var colors = [UInt8]()
         colors.reserveCapacity(vertices.count * 3)
 
-        let defR: UInt8 = 212
-        let defG: UInt8 = 163
-        let defB: UInt8 = 115
+        let defR: UInt8 = 215
+        let defG: UInt8 = 180
+        let defB: UInt8 = 140
 
         for i in 0..<vertices.count {
             let v = vertices[i]
@@ -182,7 +182,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             var g = defG
             var b = defB
 
-            if -camCoord.z > 0.15 && -camCoord.z < 6.0 {
+            if -camCoord.z > 0.1 && -camCoord.z < 6.0 {
                 let depth = -camCoord.z
                 let px = Int((fx * (camCoord.x / depth)) + cx)
                 let py = Int((fy * (-camCoord.y / depth)) + cy)
@@ -309,7 +309,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }.resume()
     }
 
-    // MARK: - Live Stream WebSocket: Truyền MẶT LƯỚI 3D (MESH + MÀU THỰC TẾ) Thời Gian Thực
+    // MARK: - Live Stream WebSocket: Truyền MẶT LƯỚI 3D TOÀN BỘ (SNAPSHOT) Thời Gian Thực
     func toggleLiveStream(serverIP: String) {
         currentServerIP = serverIP
         if isLiveStreaming {
@@ -324,8 +324,8 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         isLiveStreaming = true
         connectWebSocket(serverIP: serverIP)
 
-        // Phát sóng MESH bề mặt 3D mỗi 0.6 giây
-        liveStreamTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
+        // Phát sóng toàn bộ MESH bề mặt 3D mỗi 0.8 giây
+        liveStreamTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
             guard let self = self, self.isScanning, self.vertexCount > 0 else { return }
             self.streamLiveMeshBatch()
         }
@@ -338,7 +338,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         webSocketTask?.resume()
     }
 
-    // Truyền cả đỉnh (vertices), mặt tam giác (indices) và màu thực tế (colors)
+    // Truyền toàn bộ Mesh bề mặt 3D thực tế theo thời gian thực (Đồng bộ 1:1 với iPhone)
     private func streamLiveMeshBatch() {
         guard let ws = webSocketTask else { return }
 
@@ -347,15 +347,15 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             let anchorsList = Array(self.allMeshAnchors.values)
             guard !anchorsList.isEmpty else { return }
 
-            // Lấy 3 anchor mới cập nhật gần nhất để truyền mượt mà
-            let sampleAnchors = Array(anchorsList.suffix(3))
+            // Lấy tối đa 30 anchor để phản ánh đầy đủ toàn bộ vật thể/phòng với độ chi tiết cao nhất
+            let activeAnchors = anchorsList.count > 30 ? Array(anchorsList.suffix(30)) : anchorsList
             
             var allPositions: [Float] = []
             var allColors: [Float] = []
             var allIndices: [Int] = []
             var vOffset = 0
 
-            for anchor in sampleAnchors {
+            for anchor in activeAnchors {
                 let vertices = anchor.geometry.vertices
                 let faces = anchor.geometry.faces
                 let transform = anchor.transform
@@ -374,9 +374,9 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                         allColors.append(Float(clr[i * 3 + 1]) / 255.0)
                         allColors.append(Float(clr[i * 3 + 2]) / 255.0)
                     } else {
-                        allColors.append(0.83)
-                        allColors.append(0.64)
-                        allColors.append(0.45)
+                        allColors.append(0.85)
+                        allColors.append(0.72)
+                        allColors.append(0.55)
                     }
                 }
 
@@ -392,7 +392,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             guard !allPositions.isEmpty else { return }
 
             let payload: [String: Any] = [
-                "type": "mesh_batch",
+                "type": "mesh_snapshot",
                 "positions": allPositions,
                 "indices": allIndices,
                 "colors": allColors
@@ -467,9 +467,9 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                 let localCoord = simd_float4(v[0], v[1], v[2], 1.0)
                 let worldCoord = simd_mul(transform, localCoord)
 
-                var r: UInt8 = 212
-                var g: UInt8 = 163
-                var b: UInt8 = 115
+                var r: UInt8 = 215
+                var g: UInt8 = 180
+                var b: UInt8 = 140
 
                 if let clr = clr, (i * 3 + 2) < clr.count {
                     r = clr[i * 3]

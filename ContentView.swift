@@ -34,220 +34,231 @@ struct ContentView: View {
     @State private var showToast = false
 
     var body: some View {
-        GeometryReader { geo in
-            VStack(spacing: 0) {
-                // 1. THANH TIÊU ĐỀ: NẰM 100% TRONG VÙNG ĐEN TRÊN CÙNG (KHÔNG HỀ LẤN VÀO CAMERA)
-                VStack(spacing: 4) {
-                    HStack(spacing: 8) {
-                        HStack(spacing: 5) {
-                            Text("🏛️")
-                                .font(.system(size: 15))
+        VStack(spacing: 0) {
+            // ==============================================================
+            // 1. THANH TIÊU ĐỀ: NẰM HOÀN TOÀN TRONG VÙNG ĐEN TRÊN (HEIGHT: 135PT)
+            // TUYỆT ĐỐI KHÔNG CHẠM VÀO CAMERA - KHÔNG BỊ BÓ HẸP CHỮ
+            // ==============================================================
+            VStack(spacing: 6) {
+                Spacer() // Đẩy nội dung xuống dưới tai thỏ / Dynamic Island
+
+                HStack(alignment: .center, spacing: 8) {
+                    // Logo & Nhãn Dự Án (Thiết kế 2 tầng chuẩn mực, không bao giờ rớt chữ)
+                    HStack(spacing: 7) {
+                        Text("🏛️")
+                            .font(.system(size: 20))
+                        
+                        VStack(alignment: .leading, spacing: 1) {
                             Text("DIGITAL TWIN")
-                                .font(.system(size: 10, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.orange))
+                                .font(.system(size: 9, weight: .black, design: .rounded))
+                                .foregroundColor(.orange)
                             Text("HUẾ HERITAGE")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(.white)
                         }
+                        .fixedSize()
 
                         if scanner.isLiveStreaming {
                             HStack(spacing: 3) {
-                                Circle().fill(Color.red).frame(width: 6, height: 6)
+                                Circle().fill(Color.red).frame(width: 5, height: 5)
                                 Text("LIVE")
-                                    .font(.system(size: 9, weight: .black))
+                                    .font(.system(size: 8, weight: .black))
                                     .foregroundColor(.red)
                             }
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.18))
+                            .background(Color.red.opacity(0.2))
                             .cornerRadius(4)
                         }
+                    }
 
-                        Spacer()
+                    Spacer()
 
-                        // Nút Đèn Flash
+                    // 3 Nút chức năng bên phải
+                    HStack(spacing: 8) {
                         Button(action: { scanner.toggleTorch() }) {
                             Image(systemName: scanner.isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(scanner.isTorchOn ? .yellow : .white)
-                                .padding(7)
-                                .background(scanner.isTorchOn ? Color.yellow.opacity(0.3) : Color.white.opacity(0.15))
+                                .frame(width: 32, height: 32)
+                                .background(scanner.isTorchOn ? Color.yellow.opacity(0.3) : Color.white.opacity(0.18))
                                 .clipShape(Circle())
                         }
 
-                        // Nút Làm Mới Quét (Xóa bộ đệm & Báo Laptop dọn sạch)
                         Button(action: {
                             scanner.resetScan()
                             showNotification("Đã làm mới phiên quét")
                         }) {
                             Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundColor(.white)
-                                .padding(7)
-                                .background(Color.white.opacity(0.15))
+                                .frame(width: 32, height: 32)
+                                .background(Color.white.opacity(0.18))
                                 .clipShape(Circle())
                         }
 
-                        // Nút Cài Đặt
                         Button(action: { showingSettings.toggle() }) {
                             Image(systemName: "gearshape.fill")
-                                .font(.system(size: 14))
+                                .font(.system(size: 13))
                                 .foregroundColor(.white)
-                                .padding(7)
-                                .background(Color.white.opacity(0.15))
+                                .frame(width: 32, height: 32)
+                                .background(Color.white.opacity(0.18))
                                 .clipShape(Circle())
                         }
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.top, max(geo.safeAreaInsets.top, 44))
-
-                    // Cảnh báo vùng thưa điểm (nằm trong vùng đen)
-                    if scanner.missingAreaCount > 0 && scanner.highlightMissing {
-                        HStack(spacing: 4) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.yellow)
-                                .font(.system(size: 10))
-                            Text("Phát hiện \(scanner.missingAreaCount) vùng thưa điểm (Đang đánh dấu ĐỎ)")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(Color.red.opacity(0.9))
-                        .cornerRadius(10)
-                        .padding(.bottom, 2)
-                    }
                 }
-                .padding(.bottom, 6)
-                .frame(maxWidth: .infinity)
-                .background(Color.black)
+                .padding(.horizontal, 14)
 
-                // 2. KHUNG HÌNH CAMERA 100% SẠCH SẼ Ở GIỮA (KHÔNG BỊ BẤT KỲ NÚT NÀO ĐÈ LÊN)
-                ARViewContainer(manager: scanner)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-
-                // 3. THANH ĐIỀU KHIỂN: NẰM 100% TRONG VÙNG ĐEN DƯỚI CÙNG (KHÔNG HỀ LẤN VÀO CAMERA)
-                VStack(spacing: 6) {
-                    // Toast thông báo ngắn
-                    if showToast {
-                        Text(statusToast)
-                            .font(.system(size: 11, weight: .bold))
+                // Cảnh báo vùng thưa điểm (nằm gọn trong vùng đen)
+                if scanner.missingAreaCount > 0 && scanner.highlightMissing {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.yellow)
+                            .font(.system(size: 10))
+                        Text("Phát hiện \(scanner.missingAreaCount) vùng thưa điểm (Đang đánh dấu ĐỎ)")
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 5)
-                            .background(Color.gray.opacity(0.5))
-                            .cornerRadius(12)
-                            .transition(.scale.combined(with: .opacity))
                     }
-
-                    // Dòng chỉ số kỹ thuật HBIM thu gọn 1 hàng duy nhất
-                    HStack {
-                        HStack(spacing: 3) {
-                            Circle().fill(Color.green).frame(width: 5, height: 5)
-                            Text("ĐIỂM: \(scanner.vertexCount.formatted())")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white)
-                        }
-                        Spacer()
-                        HStack(spacing: 3) {
-                            Circle().fill(Color.yellow).frame(width: 5, height: 5)
-                            Text("LƯỚI: \(scanner.faceCount.formatted())")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(.white)
-                        }
-                        Spacer()
-                        Text("HBIM: ±\(String(format: "%.1f", scanner.accuracyErrorMM))mm")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(scanner.accuracyErrorMM <= 1.5 ? .green : .orange)
-                    }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 10)
                     .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.12))
-                    .cornerRadius(6)
+                    .background(Color.red.opacity(0.9))
+                    .cornerRadius(8)
+                }
+            }
+            .padding(.bottom, 8)
+            .frame(height: 135)
+            .frame(maxWidth: .infinity)
+            .background(Color.black)
 
-                    // 4 phím chức năng cốt lõi
-                    HStack(spacing: 6) {
-                        // Nút Tạm Dừng / Bắt Đầu
-                        Button(action: {
-                            if scanner.isScanning {
-                                scanner.stopSession()
-                            } else {
-                                scanner.startSession()
-                            }
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: scanner.isScanning ? "pause.fill" : "play.fill")
-                                Text(scanner.isScanning ? "Tạm Dừng" : "Bắt Đầu")
-                            }
-                            .font(.system(size: 11, weight: .bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .background(scanner.isScanning ? Color.orange : Color.blue)
+            // ==============================================================
+            // 2. KHUNG HÌNH CAMERA 4:3 (HEIGHT: 524PT)
+            // 100% SẠCH SẼ - KHÔNG CÓ BẤT KỲ NÚT NÀO ĐÈ LÊN KHUNG HÌNH
+            // ==============================================================
+            ARViewContainer(manager: scanner)
+                .frame(maxWidth: .infinity)
+                .frame(height: 524)
+                .clipped()
+
+            // ==============================================================
+            // 3. BẢNG ĐIỀU KHIỂN: NẰM HOÀN TOÀN TRONG VÙNG ĐEN DƯỚI (CHIẾM HẾT PHẦN ĐÁY)
+            // ==============================================================
+            VStack(spacing: 8) {
+                // Toast thông báo ngắn (nếu có)
+                if showToast {
+                    Text(statusToast)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 4)
+                        .background(Color.gray.opacity(0.5))
+                        .cornerRadius(10)
+                        .transition(.scale.combined(with: .opacity))
+                }
+
+                // Dòng chỉ số kỹ thuật HBIM thu gọn 1 hàng duy nhất
+                HStack {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.green).frame(width: 5, height: 5)
+                        Text("ĐIỂM: \(scanner.vertexCount.formatted())")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundColor(.white)
-                            .cornerRadius(8)
-                        }
-
-                        // Nút Đồng Bộ lên Laptop
-                        Button(action: {
-                            scanner.uploadToServer(serverIP: serverIP) { success, msg in
-                                showNotification(msg)
-                            }
-                        }) {
-                            HStack(spacing: 4) {
-                                if scanner.isUploading {
-                                    ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                } else {
-                                    Image(systemName: "arrow.triangle.2.circlepath")
-                                    Text("Đồng Bộ")
-                                }
-                            }
-                            .font(.system(size: 11, weight: .bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .background(Color.green)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
-                        }
-
-                        // Nút Live Stream Trực Tiếp
-                        Button(action: {
-                            scanner.toggleLiveStream(serverIP: serverIP)
-                            showNotification(scanner.isLiveStreaming ? "Đang truyền trực tiếp 3D tới Laptop" : "Đã tắt truyền trực tiếp")
-                        }) {
-                            Image(systemName: scanner.isLiveStreaming ? "antenna.radiowaves.left.and.right" : "dot.radiowaves.left.and.right")
-                                .font(.system(size: 13, weight: .bold))
-                                .frame(width: 42, height: 34)
-                                .background(scanner.isLiveStreaming ? Color.red : Color.white.opacity(0.2))
-                                .foregroundColor(.white)
-                                .cornerRadius(8)
-                        }
-
-                        // Nút Chia Sẻ File
-                        Button(action: {
-                            scanner.sharePLYFile()
-                        }) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 13, weight: .bold))
-                                .frame(width: 42, height: 34)
-                                .background(Color.white.opacity(0.2))
-                                .foregroundColor(.white)
-                                .cornerRadius(8)
-                        }
                     }
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.yellow).frame(width: 5, height: 5)
+                        Text("LƯỚI: \(scanner.faceCount.formatted())")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                    }
+                    Spacer()
+                    Text("HBIM: ±\(String(format: "%.1f", scanner.accuracyErrorMM))mm")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(scanner.accuracyErrorMM <= 1.5 ? .green : .orange)
                 }
                 .padding(.horizontal, 12)
-                .padding(.top, 6)
-                .padding(.bottom, max(geo.safeAreaInsets.bottom, 22))
-                .frame(maxWidth: .infinity)
-                .background(Color.black)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.12))
+                .cornerRadius(6)
+
+                // 4 phím chức năng cốt lõi
+                HStack(spacing: 6) {
+                    // Nút Tạm Dừng / Bắt Đầu
+                    Button(action: {
+                        if scanner.isScanning {
+                            scanner.stopSession()
+                        } else {
+                            scanner.startSession()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: scanner.isScanning ? "pause.fill" : "play.fill")
+                            Text(scanner.isScanning ? "Tạm Dừng" : "Bắt Đầu")
+                        }
+                        .font(.system(size: 11, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(scanner.isScanning ? Color.orange : Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+
+                    // Nút Đồng Bộ lên Laptop
+                    Button(action: {
+                        scanner.uploadToServer(serverIP: serverIP) { success, msg in
+                            showNotification(msg)
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            if scanner.isUploading {
+                                ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                Text("Đồng Bộ")
+                            }
+                        }
+                        .font(.system(size: 11, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+
+                    // Nút Live Stream Trực Tiếp
+                    Button(action: {
+                        scanner.toggleLiveStream(serverIP: serverIP)
+                        showNotification(scanner.isLiveStreaming ? "Đang truyền trực tiếp 3D tới Laptop" : "Đã tắt truyền trực tiếp")
+                    }) {
+                        Image(systemName: scanner.isLiveStreaming ? "antenna.radiowaves.left.and.right" : "dot.radiowaves.left.and.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(width: 44, height: 38)
+                            .background(scanner.isLiveStreaming ? Color.red : Color.white.opacity(0.2))
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+
+                    // Nút Chia Sẻ File
+                    Button(action: {
+                        scanner.sharePLYFile()
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(width: 44, height: 38)
+                            .background(Color.white.opacity(0.2))
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                    }
+                }
+
+                Spacer()
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black)
-            .edgesIgnoringSafeArea(.all)
         }
+        .background(Color.black)
+        .edgesIgnoringSafeArea(.all)
         .sheet(isPresented: $showingSettings) {
             SettingsSheet(scanner: scanner, serverIP: $serverIP, onDismiss: { showingSettings = false })
         }
@@ -343,7 +354,7 @@ struct SettingsSheet: View {
                     HStack {
                         Text("Phiên bản")
                         Spacer()
-                        Text("v1.4 - Clean Camera Viewport & Live 3D Mesh")
+                        Text("v1.5 - Clean Viewport & Full Density Live Mesh")
                             .foregroundColor(.secondary)
                     }
                 }
