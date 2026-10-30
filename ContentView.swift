@@ -12,7 +12,7 @@ struct ARViewContainer: UIViewRepresentable {
         arView.delegate = manager
         arView.session.delegate = manager
 
-        // Hiển thị khung dây 3D wireframe chuẩn trên bề mặt vật thể thực
+        // Hiển thị khung dây 3D wireframe trên vật thể thực
         arView.debugOptions = [.showWireframe]
 
         #if !targetEnvironment(simulator)
@@ -34,17 +34,11 @@ struct ContentView: View {
     @State private var showToast = false
 
     var body: some View {
-        ZStack {
-            // 1. TOÀN BỘ KHÔNG GIAN LÀ CAMERA LIDAR 100%
-            ARViewContainer(manager: scanner)
-                .edgesIgnoringSafeArea(.all)
-
-            // 2. GIAO DIỆN NỔI ÉP SÁT TUYỆT ĐỐI VÀO 2 MÉP TRÊN VÀ DƯỚI
+        GeometryReader { geo in
             VStack(spacing: 0) {
-                // THANH TIÊU ĐỀ TRÊN CÙNG: ÉP SÁT MÉP TRÊN (TRÀN QUA TAI THỎ / DYNAMIC ISLAND)
-                VStack(spacing: 0) {
+                // 1. THANH TIÊU ĐỀ: NẰM 100% TRONG VÙNG ĐEN TRÊN CÙNG (KHÔNG HỀ LẤN VÀO CAMERA)
+                VStack(spacing: 4) {
                     HStack(spacing: 8) {
-                        // LOGO DI TÍCH HUẾ + HUY HIỆU DIGITAL TWIN
                         HStack(spacing: 5) {
                             Text("🏛️")
                                 .font(.system(size: 15))
@@ -74,7 +68,7 @@ struct ContentView: View {
 
                         Spacer()
 
-                        // NÚT BẬT / TẮT ĐÈN FLASH
+                        // Nút Đèn Flash
                         Button(action: { scanner.toggleTorch() }) {
                             Image(systemName: scanner.isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill")
                                 .font(.system(size: 14, weight: .bold))
@@ -84,10 +78,10 @@ struct ContentView: View {
                                 .clipShape(Circle())
                         }
 
-                        // NÚT LÀM MỚI DỮ LIỆU
+                        // Nút Làm Mới Quét (Xóa bộ đệm & Báo Laptop dọn sạch)
                         Button(action: {
                             scanner.resetScan()
-                            showNotification("Đã xóa và làm mới lần quét")
+                            showNotification("Đã làm mới phiên quét")
                         }) {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.system(size: 14, weight: .bold))
@@ -97,7 +91,7 @@ struct ContentView: View {
                                 .clipShape(Circle())
                         }
 
-                        // NÚT CÀI ĐẶT KẾT NỐI
+                        // Nút Cài Đặt
                         Button(action: { showingSettings.toggle() }) {
                             Image(systemName: "gearshape.fill")
                                 .font(.system(size: 14))
@@ -108,45 +102,48 @@ struct ContentView: View {
                         }
                     }
                     .padding(.horizontal, 14)
-                    .padding(.top, 48) // Bù phần tai thỏ / Dynamic Island một cách hoàn hảo
-                    .padding(.bottom, 8)
-                }
-                .background(Color.black.opacity(0.85))
+                    .padding(.top, max(geo.safeAreaInsets.top, 44))
 
-                // Mini cảnh báo vùng thưa điểm (nếu có)
-                if scanner.missingAreaCount > 0 && scanner.highlightMissing {
-                    HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.yellow)
-                            .font(.system(size: 10))
-                        Text("Phát hiện \(scanner.missingAreaCount) vùng thưa điểm (Đang đánh dấu ĐỎ)")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white)
+                    // Cảnh báo vùng thưa điểm (nằm trong vùng đen)
+                    if scanner.missingAreaCount > 0 && scanner.highlightMissing {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.yellow)
+                                .font(.system(size: 10))
+                            Text("Phát hiện \(scanner.missingAreaCount) vùng thưa điểm (Đang đánh dấu ĐỎ)")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(Color.red.opacity(0.9))
+                        .cornerRadius(10)
+                        .padding(.bottom, 2)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 3)
-                    .background(Color.red.opacity(0.9))
-                    .cornerRadius(10)
-                    .padding(.top, 4)
                 }
+                .padding(.bottom, 6)
+                .frame(maxWidth: .infinity)
+                .background(Color.black)
 
-                Spacer()
+                // 2. KHUNG HÌNH CAMERA 100% SẠCH SẼ Ở GIỮA (KHÔNG BỊ BẤT KỲ NÚT NÀO ĐÈ LÊN)
+                ARViewContainer(manager: scanner)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
 
-                // Thông báo Toast ngắn
-                if showToast {
-                    Text(statusToast)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.92))
-                        .cornerRadius(18)
-                        .padding(.bottom, 10)
-                        .transition(.scale.combined(with: .opacity))
-                }
-
-                // THANH ĐIỀU KHIỂN DƯỚI CÙNG: ÉP SÁT ĐÁY MÀN HÌNH (TRÀN QUA THANH VUỐT HOME BAR)
+                // 3. THANH ĐIỀU KHIỂN: NẰM 100% TRONG VÙNG ĐEN DƯỚI CÙNG (KHÔNG HỀ LẤN VÀO CAMERA)
                 VStack(spacing: 6) {
+                    // Toast thông báo ngắn
+                    if showToast {
+                        Text(statusToast)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 5)
+                            .background(Color.gray.opacity(0.5))
+                            .cornerRadius(12)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+
                     // Dòng chỉ số kỹ thuật HBIM thu gọn 1 hàng duy nhất
                     HStack {
                         HStack(spacing: 3) {
@@ -174,7 +171,7 @@ struct ContentView: View {
 
                     // 4 phím chức năng cốt lõi
                     HStack(spacing: 6) {
-                        // Nút Tạm Dừng / Quét Tiếp
+                        // Nút Tạm Dừng / Bắt Đầu
                         Button(action: {
                             if scanner.isScanning {
                                 scanner.stopSession()
@@ -194,7 +191,7 @@ struct ContentView: View {
                             .cornerRadius(8)
                         }
 
-                        // Nút Đồng Bộ & Ghép Hợp Nhất lên Laptop
+                        // Nút Đồng Bộ lên Laptop
                         Button(action: {
                             scanner.uploadToServer(serverIP: serverIP) { success, msg in
                                 showNotification(msg)
@@ -219,7 +216,7 @@ struct ContentView: View {
                         // Nút Live Stream Trực Tiếp
                         Button(action: {
                             scanner.toggleLiveStream(serverIP: serverIP)
-                            showNotification(scanner.isLiveStreaming ? "Đang truyền trực tiếp tới Laptop" : "Đã tắt truyền trực tiếp")
+                            showNotification(scanner.isLiveStreaming ? "Đang truyền trực tiếp 3D tới Laptop" : "Đã tắt truyền trực tiếp")
                         }) {
                             Image(systemName: scanner.isLiveStreaming ? "antenna.radiowaves.left.and.right" : "dot.radiowaves.left.and.right")
                                 .font(.system(size: 13, weight: .bold))
@@ -244,9 +241,11 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 6)
-                .padding(.bottom, 28) // Ôm sát thanh điều hướng đáy của iPhone
-                .background(Color.black.opacity(0.85))
+                .padding(.bottom, max(geo.safeAreaInsets.bottom, 22))
+                .frame(maxWidth: .infinity)
+                .background(Color.black)
             }
+            .background(Color.black)
             .edgesIgnoringSafeArea(.all)
         }
         .sheet(isPresented: $showingSettings) {
@@ -344,7 +343,7 @@ struct SettingsSheet: View {
                     HStack {
                         Text("Phiên bản")
                         Spacer()
-                        Text("v1.3 - Multi-Scan Master ICP")
+                        Text("v1.4 - Clean Camera Viewport & Live 3D Mesh")
                             .foregroundColor(.secondary)
                     }
                 }
