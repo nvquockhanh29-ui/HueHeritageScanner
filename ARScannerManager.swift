@@ -200,13 +200,12 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         let defB: UInt8 = 140
 
         let camPos = simd_float3(camera.transform.columns.3.x, camera.transform.columns.3.y, camera.transform.columns.3.z)
-        let rot = simd_float3x3(anchor.transform.columns.0.xyz, anchor.transform.columns.1.xyz, anchor.transform.columns.2.xyz)
         let normals = anchor.geometry.normals
         let hasNormals = (normals.count == vertices.count)
 
         for i in 0..<vertices.count {
             let v = vertices[i]
-            let worldCoord = simd_mul(transform, simd_float4(v[0], v[1], v[2], 1.0))
+            let worldCoord = simd_mul(transform, simd_float4(v.x, v.y, v.z, 1.0))
             let camCoord = simd_mul(invCam, worldCoord)
 
             var sampled = false
@@ -224,7 +223,8 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                     var isValidAngle = true
                     if hasNormals {
                         let n = normals[i]
-                        let worldNorm = simd_normalize(simd_mul(rot, simd_float3(n[0], n[1], n[2])))
+                        let worldNorm4 = simd_mul(transform, simd_float4(n.x, n.y, n.z, 0.0))
+                        let worldNorm = simd_normalize(simd_float3(worldNorm4.x, worldNorm4.y, worldNorm4.z))
                         let dirToCam = simd_normalize(camPos - simd_float3(worldCoord.x, worldCoord.y, worldCoord.z))
                         let angleCos = simd_dot(worldNorm, dirToCam)
                         // Bề mặt phải hướng về phía camera ít nhất ~15 độ để tránh nhòe góc cạnh hoặc tràn màu mặt sau
