@@ -35,14 +35,19 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            // 1. CẢM BIẾN CAMERA & 3D WIREFRAME MESH (TOÀN BỘ MẶT KÍNH 100%)
+            // 1. CẢM BIẾN CAMERA & 3D WIREFRAME MESH (NỀN ĐEN PHỦ TOÀN BỘ MẶT KÍNH)
+            Color.black.edgesIgnoringSafeArea(.all)
+            
             ARViewContainer(manager: scanner)
                 .edgesIgnoringSafeArea(.all)
 
-            // 2. GIAO DIỆN NỔI (ĐẢM BẢO 100% NÚT BẤM VÀ TIÊU ĐỀ LUÔN HIỆN RÕ RÀNG)
+            // 2. GIAO DIỆN ĐIỀU KHIỂN NẰM TRỌN TRONG 2 DẢI ĐEN TRÊN VÀ DƯỚI
             VStack(spacing: 0) {
-                // THANH TIÊU ĐỀ TRÊN CÙNG: NẰM GỌN GÀNG DƯỚI DYNAMIC ISLAND / TAI THỎ
-                VStack(spacing: 5) {
+                // ==============================================================
+                // A. THANH TIÊU ĐỀ: NẰM 100% TRONG DẢI ĐEN TRÊN CÙNG (DƯỚI TAI THỎ)
+                // HOÀN TOÀN KHÔNG CHẠM VÀO CAMERA
+                // ==============================================================
+                VStack(spacing: 4) {
                     HStack(spacing: 8) {
                         // Logo & Nhãn Dự Án
                         HStack(spacing: 6) {
@@ -75,15 +80,15 @@ struct ContentView: View {
 
                         Spacer()
 
-                        // 3 Nút chức năng bên phải
+                        // 3 Nút chức năng: Flash, Reset, Settings
                         HStack(spacing: 8) {
                             // Nút Đèn Flash
                             Button(action: { scanner.toggleTorch() }) {
                                 Image(systemName: scanner.isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill")
                                     .font(.system(size: 13, weight: .bold))
                                     .foregroundColor(scanner.isTorchOn ? .yellow : .white)
-                                    .frame(width: 34, height: 34)
-                                    .background(scanner.isTorchOn ? Color.yellow.opacity(0.3) : Color.black.opacity(0.65))
+                                    .frame(width: 32, height: 32)
+                                    .background(scanner.isTorchOn ? Color.yellow.opacity(0.3) : Color.white.opacity(0.2))
                                     .clipShape(Circle())
                             }
 
@@ -95,8 +100,8 @@ struct ContentView: View {
                                 Image(systemName: "arrow.counterclockwise")
                                     .font(.system(size: 13, weight: .bold))
                                     .foregroundColor(.white)
-                                    .frame(width: 34, height: 34)
-                                    .background(Color.black.opacity(0.65))
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.white.opacity(0.2))
                                     .clipShape(Circle())
                             }
 
@@ -105,17 +110,16 @@ struct ContentView: View {
                                 Image(systemName: "gearshape.fill")
                                     .font(.system(size: 13))
                                     .foregroundColor(.white)
-                                    .frame(width: 34, height: 34)
-                                    .background(Color.black.opacity(0.65))
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.white.opacity(0.2))
                                     .clipShape(Circle())
                             }
                         }
                     }
                     .padding(.horizontal, 14)
-                    .padding(.top, 50) // Vị trí hoàn hảo dưới Dynamic Island / Tai thỏ
-                    .padding(.bottom, 6)
+                    .padding(.top, 4) // Đẩy nhẹ nhàng dưới Dynamic Island
 
-                    // Cảnh báo vùng thưa điểm (nếu có)
+                    // Cảnh báo vùng thưa điểm (nằm ngay dưới tiêu đề, vẫn trong dải đen trên)
                     if scanner.missingAreaCount > 0 && scanner.highlightMissing {
                         HStack(spacing: 4) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -129,20 +133,18 @@ struct ContentView: View {
                         .padding(.vertical, 3)
                         .background(Color.red.opacity(0.9))
                         .cornerRadius(8)
-                        .padding(.bottom, 4)
+                        .padding(.top, 2)
                     }
                 }
-                .background(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.92), Color.black.opacity(0.7), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .padding(.bottom, 4)
 
+                // ==============================================================
+                // B. KHUNG HÌNH CAMERA 4:3 Ở GIỮA
+                // 100% SẠCH SẼ - KHÔNG CÓ BẤT KỲ NÚT NÀO ĐÈ LÊN KHUNG HÌNH
+                // ==============================================================
                 Spacer()
 
-                // Toast thông báo ngắn nổi ở giữa (nếu có)
+                // Toast thông báo ngắn nổi nhẹ (nếu có)
                 if showToast {
                     Text(statusToast)
                         .font(.system(size: 11, weight: .bold))
@@ -151,12 +153,14 @@ struct ContentView: View {
                         .padding(.vertical, 6)
                         .background(Color.black.opacity(0.85))
                         .cornerRadius(14)
-                        .padding(.bottom, 10)
+                        .padding(.bottom, 6)
                         .transition(.scale.combined(with: .opacity))
                 }
 
-                // BẢNG ĐIỀU KHIỂN DƯỚI CÙNG (ĐẢM BẢO 4 NÚT VÀ CHỈ SỐ LUÔN RÕ RÀNG 100%)
-                VStack(spacing: 7) {
+                // ==============================================================
+                // C. BẢNG ĐIỀU KHIỂN: NẰM 100% TRONG DẢI ĐEN DƯỚI CÙNG (DƯỚI CAMERA)
+                // ==============================================================
+                VStack(spacing: 6) {
                     // Dòng chỉ số kỹ thuật HBIM thu gọn 1 hàng duy nhất
                     HStack {
                         HStack(spacing: 4) {
@@ -179,10 +183,10 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.65))
+                    .background(Color.white.opacity(0.12))
                     .cornerRadius(6)
 
-                    // 4 phím chức năng lớn
+                    // 4 Phím chức năng lớn
                     HStack(spacing: 8) {
                         // Nút Tạm Dừng / Bắt Đầu
                         Button(action: {
@@ -196,7 +200,7 @@ struct ContentView: View {
                                 Image(systemName: scanner.isScanning ? "pause.fill" : "play.fill")
                                 Text(scanner.isScanning ? "Tạm Dừng" : "Bắt Đầu")
                             }
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(scanner.isScanning ? Color.orange : Color.blue)
@@ -218,7 +222,7 @@ struct ContentView: View {
                                     Text("Đồng Bộ")
                                 }
                             }
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(Color.green)
@@ -234,7 +238,7 @@ struct ContentView: View {
                             Image(systemName: scanner.isLiveStreaming ? "antenna.radiowaves.left.and.right" : "dot.radiowaves.left.and.right")
                                 .font(.system(size: 14, weight: .bold))
                                 .frame(width: 44, height: 38)
-                                .background(scanner.isLiveStreaming ? Color.red : Color.black.opacity(0.65))
+                                .background(scanner.isLiveStreaming ? Color.red : Color.white.opacity(0.2))
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
                         }
@@ -246,24 +250,16 @@ struct ContentView: View {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.system(size: 14, weight: .bold))
                                 .frame(width: 44, height: 38)
-                                .background(Color.black.opacity(0.65))
+                                .background(Color.white.opacity(0.2))
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
                         }
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 28) // Ôm sát thanh vuốt Home bar an toàn
-                .background(
-                    LinearGradient(
-                        colors: [Color.clear, Color.black.opacity(0.7), Color.black.opacity(0.95)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .padding(.top, 4)
+                .padding(.bottom, 4) // Ôm êm ái trên thanh Home bar
             }
-            .edgesIgnoringSafeArea(.all)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsSheet(scanner: scanner, serverIP: $serverIP, onDismiss: { showingSettings = false })
@@ -360,7 +356,7 @@ struct SettingsSheet: View {
                     HStack {
                         Text("Phiên bản")
                         Spacer()
-                        Text("v1.6 - Guaranteed Visible HUD & Real-time 3D Mesh")
+                        Text("v1.7 - True Letterbox Clean Viewport")
                             .foregroundColor(.secondary)
                     }
                 }
