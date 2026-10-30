@@ -37,7 +37,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     // Kênh WebSocket truyền trực tiếp
     private var webSocketTask: URLSessionWebSocketTask?
     private var liveStreamTimer: Timer?
-    private var currentServerIP: String = "192.168.1.8"
+    private var currentServerIP: String = "192.168.2.17"
 
     func startSession() {
         let configuration = ARWorldTrackingConfiguration()

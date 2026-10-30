@@ -28,7 +28,7 @@ struct ARViewContainer: UIViewRepresentable {
 
 struct ContentView: View {
     @StateObject private var scanner = ARScannerManager()
-    @State private var serverIP: String = "192.168.1.8"
+    @State private var serverIP: String = "192.168.2.17"
     @State private var showingSettings = false
     @State private var statusToast: String = ""
     @State private var showToast = false
@@ -288,19 +288,19 @@ struct SettingsSheet: View {
             Form {
                 Section(header: Text("Kết nối Đồng Bộ Laptop")) {
                     HStack {
+                        Button("WiFi (192.168.2.17)") {
+                            serverIP = "192.168.2.17"
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(serverIP == "192.168.2.17" ? .green : .gray)
+
+                        Spacer()
+
                         Button("Cáp USB (172.20.10.2)") {
                             serverIP = "172.20.10.2"
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(serverIP == "172.20.10.2" ? .blue : .gray)
-
-                        Spacer()
-
-                        Button("WiFi (192.168.1.8)") {
-                            serverIP = "192.168.1.8"
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(serverIP == "192.168.1.8" ? .blue : .gray)
                     }
 
                     TextField("Địa chỉ IP Máy chủ Laptop", text: $serverIP)
