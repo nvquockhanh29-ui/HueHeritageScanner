@@ -139,7 +139,8 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             for anchor in meshList {
                 self.allMeshAnchors[anchor.identifier] = anchor
                 if let frame = currentFrame {
-                    let colors = self.sampleCameraColors(for: anchor, frame: frame)
+                    let oldColors = self.anchorColors[anchor.identifier]
+                    let colors = self.sampleCameraColors(for: anchor, frame: frame, existingColors: oldColors)
                     if !colors.isEmpty {
                         self.anchorColors[anchor.identifier] = colors
                     }
@@ -161,9 +162,9 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    // MARK: - Trích xuất Màu Sắc Ảnh Thực tế từ Cảm biến Camera LiDAR
-    private func sampleCameraColors(for anchor: ARMeshAnchor, frame: ARFrame?) -> [UInt8] {
-        guard let frame = frame else { return [] }
+        // MARK: - Trích xuất Màu Sắc Ảnh Thực tế từ Cảm biến Camera LiDAR với Lọc Pháp Tuyến & Bảo tồn Màu
+    private func sampleCameraColors(for anchor: ARMeshAnchor, frame: ARFrame?, existingColors: [UInt8]?) -> [UInt8] {
+        guard let frame = frame else { return existingColors ?? [] }
         let pixelBuffer = frame.capturedImage
         let camera = frame.camera
 
@@ -174,7 +175,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         let height = CVPixelBufferGetHeight(pixelBuffer)
         guard let yBase = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0)?.assumingMemoryBound(to: UInt8.self),
               let uvBase = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1)?.assumingMemoryBound(to: UInt8.self) else {
-            return []
+            return existingColors ?? []
         }
 
         let yStride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
@@ -188,6 +189,9 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         let cx = camera.intrinsics[2][0]
         let cy = camera.intrinsics[2][1]
 
+        let oldColors = existingColors
+        let hasOld = (oldColors != nil && oldColors!.count >= vertices.count * 3)
+
         var colors = [UInt8]()
         colors.reserveCapacity(vertices.count * 3)
 
@@ -195,35 +199,69 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         let defG: UInt8 = 180
         let defB: UInt8 = 140
 
+        let camPos = simd_float3(camera.transform.columns.3.x, camera.transform.columns.3.y, camera.transform.columns.3.z)
+        let rot = simd_float3x3(anchor.transform.columns.0.xyz, anchor.transform.columns.1.xyz, anchor.transform.columns.2.xyz)
+        let normals = anchor.geometry.normals
+        let hasNormals = (normals.count == vertices.count)
+
         for i in 0..<vertices.count {
             let v = vertices[i]
             let worldCoord = simd_mul(transform, simd_float4(v[0], v[1], v[2], 1.0))
             let camCoord = simd_mul(invCam, worldCoord)
 
-            var r = defR
-            var g = defG
-            var b = defB
+            var sampled = false
+            var r: UInt8 = defR
+            var g: UInt8 = defG
+            var b: UInt8 = defB
 
-            if -camCoord.z > 0.1 && -camCoord.z < 6.0 {
+            // Điểm nằm trước camera trong phạm vi hiệu dụng LiDAR 0.15m - 4.5m
+            if -camCoord.z > 0.15 && -camCoord.z < 4.5 {
                 let depth = -camCoord.z
                 let px = Int((fx * (camCoord.x / depth)) + cx)
                 let py = Int((fy * (-camCoord.y / depth)) + cy)
 
                 if px >= 0 && px < width && py >= 0 && py < height {
-                    let yVal = Float(yBase[py * yStride + px])
-                    let uvRow = (py / 2) * uvStride
-                    let uvCol = (px / 2) * 2
-                    let cbVal = Float(uvBase[uvRow + uvCol]) - 128.0
-                    let crVal = Float(uvBase[uvRow + uvCol + 1]) - 128.0
+                    var isValidAngle = true
+                    if hasNormals {
+                        let n = normals[i]
+                        let worldNorm = simd_normalize(simd_mul(rot, simd_float3(n[0], n[1], n[2])))
+                        let dirToCam = simd_normalize(camPos - simd_float3(worldCoord.x, worldCoord.y, worldCoord.z))
+                        let angleCos = simd_dot(worldNorm, dirToCam)
+                        // Bề mặt phải hướng về phía camera ít nhất ~15 độ để tránh nhòe góc cạnh hoặc tràn màu mặt sau
+                        if angleCos < 0.25 {
+                            isValidAngle = false
+                        }
+                    }
 
-                    r = UInt8(clamping: Int(yVal + 1.402 * crVal))
-                    g = UInt8(clamping: Int(yVal - 0.344136 * cbVal - 0.714136 * crVal))
-                    b = UInt8(clamping: Int(yVal + 1.772 * cbVal))
+                    if isValidAngle {
+                        let yVal = Float(yBase[py * yStride + px])
+                        let uvRow = (py / 2) * uvStride
+                        let uvCol = (px / 2) * 2
+                        let cbVal = Float(uvBase[uvRow + uvCol]) - 128.0
+                        let crVal = Float(uvBase[uvRow + uvCol + 1]) - 128.0
+
+                        r = UInt8(clamping: Int(yVal + 1.402 * crVal))
+                        g = UInt8(clamping: Int(yVal - 0.344136 * cbVal - 0.714136 * crVal))
+                        b = UInt8(clamping: Int(yVal + 1.772 * cbVal))
+                        sampled = true
+                    }
                 }
             }
-            colors.append(r)
-            colors.append(g)
-            colors.append(b)
+
+            if sampled {
+                colors.append(r)
+                colors.append(g)
+                colors.append(b)
+            } else if hasOld {
+                // Bảo tồn 100% màu ảnh thật đã chụp trước đó, không bị ghi đè màu vàng/đen khi quay camera góc khác
+                colors.append(oldColors![i * 3])
+                colors.append(oldColors![i * 3 + 1])
+                colors.append(oldColors![i * 3 + 2])
+            } else {
+                colors.append(defR)
+                colors.append(defG)
+                colors.append(defB)
+            }
         }
         return colors
     }
@@ -345,13 +383,14 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    func startLiveStream(serverIP: String) {
+        func startLiveStream(serverIP: String) {
         currentServerIP = serverIP
         isLiveStreaming = true
         connectWebSocket(serverIP: serverIP)
 
-        // Phát sóng toàn bộ MESH bề mặt 3D mỗi 0.8 giây
-        liveStreamTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
+        liveStreamTimer?.invalidate()
+        // Phát sóng MESH bề mặt 3D mỗi 0.6 giây
+        liveStreamTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
             guard let self = self, self.isScanning, self.vertexCount > 0 else { return }
             self.streamLiveMeshBatch()
         }
@@ -360,13 +399,43 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     private func connectWebSocket(serverIP: String) {
         guard let url = URL(string: "ws://\(serverIP):8000/ws/stream") else { return }
         let session = URLSession(configuration: .default)
-        webSocketTask = session.webSocketTask(with: url)
-        webSocketTask?.resume()
+        let task = session.webSocketTask(with: url)
+        // Mở rộng bộ đệm tối đa lên 64MB để không bao giờ bị nghẽn payload
+        task.maximumMessageSize = 64 * 1024 * 1024
+        task.resume()
+        self.webSocketTask = task
+        self.listenWebSocket()
     }
 
-    // Truyền toàn bộ Mesh bề mặt 3D thực tế theo thời gian thực (Đồng bộ 1:1 với iPhone, không lổ chỗ, cố định tọa độ)
+    private func reconnectWebSocket() {
+        guard isLiveStreaming else { return }
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self = self, self.isLiveStreaming else { return }
+            self.connectWebSocket(serverIP: self.currentServerIP)
+        }
+    }
+
+    private func listenWebSocket() {
+        webSocketTask?.receive { [weak self] result in
+            switch result {
+            case .failure(_):
+                self?.reconnectWebSocket()
+            case .success(_):
+                self?.listenWebSocket()
+            }
+        }
+    }
+
+    // Truyền toàn bộ Mesh bề mặt 3D thực tế theo thời gian thực (Đồng bộ 1:1 với iPhone, không gián đoạn, tự phục hồi)
     private func streamLiveMeshBatch() {
-        guard let ws = webSocketTask, !isStreamingBatch else { return }
+        guard let ws = webSocketTask, !isStreamingBatch else {
+            if isLiveStreaming && (webSocketTask == nil || webSocketTask?.state != .running) {
+                reconnectWebSocket()
+            }
+            return
+        }
         isStreamingBatch = true
 
         meshQueue.async { [weak self] in
@@ -378,11 +447,11 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
 
             // Giữ thứ tự cố định theo UUID để tọa độ đỉnh không bị nhảy xáo trộn
             let sortedAnchors = anchorsList.sorted { $0.identifier.uuidString < $1.identifier.uuidString }
-            // Truyền lên tới 120 anchor để bao phủ toàn bộ phòng/di tích (loại bỏ hoàn toàn hiện tượng lổ chỗ)
-            let activeAnchors = sortedAnchors.count > 120 ? Array(sortedAnchors.suffix(120)) : sortedAnchors
+            // Truyền lên tới 150 anchor mới nhất để bao phủ rộng khắp không gian
+            let activeAnchors = sortedAnchors.count > 150 ? Array(sortedAnchors.suffix(150)) : sortedAnchors
             
             var allPositions: [Float] = []
-            var allColors: [Float] = []
+            var allColors: [UInt8] = [] // Dùng UInt8 [0-255] giảm 6 lần dung lượng JSON
             var allIndices: [Int] = []
             var vOffset = 0
 
@@ -396,18 +465,19 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                     let v = vertices[i]
                     let localCoord = simd_float4(v[0], v[1], v[2], 1.0)
                     let worldCoord = simd_mul(transform, localCoord)
-                    allPositions.append(worldCoord.x)
-                    allPositions.append(worldCoord.y)
-                    allPositions.append(worldCoord.z)
+                    // Làm tròn 3 số thập phân (độ chính xác 1mm) để giảm dung lượng mạng
+                    allPositions.append((worldCoord.x * 1000).rounded() / 1000)
+                    allPositions.append((worldCoord.y * 1000).rounded() / 1000)
+                    allPositions.append((worldCoord.z * 1000).rounded() / 1000)
 
                     if let clr = cList, (i * 3 + 2) < clr.count {
-                        allColors.append(Float(clr[i * 3]) / 255.0)
-                        allColors.append(Float(clr[i * 3 + 1]) / 255.0)
-                        allColors.append(Float(clr[i * 3 + 2]) / 255.0)
+                        allColors.append(clr[i * 3])
+                        allColors.append(clr[i * 3 + 1])
+                        allColors.append(clr[i * 3 + 2])
                     } else {
-                        allColors.append(0.85)
-                        allColors.append(0.72)
-                        allColors.append(0.55)
+                        allColors.append(215)
+                        allColors.append(180)
+                        allColors.append(140)
                     }
                 }
 
@@ -429,9 +499,16 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                 "colors": allColors
             ]
 
-            if let jsonData = try? JSONSerialization.data(withJSONObject: payload),
-               let jsonStr = String(data: jsonData, encoding: .utf8) {
-                ws.send(.string(jsonStr)) { _ in }
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: payload),
+                  let jsonStr = String(data: jsonData, encoding: .utf8) else {
+                return
+            }
+
+            ws.send(.string(jsonStr)) { [weak self] error in
+                if let _ = error {
+                    // Tự động kết nối lại nếu có lỗi đường truyền mà không làm gián đoạn việc quét
+                    self?.reconnectWebSocket()
+                }
             }
         }
     }
