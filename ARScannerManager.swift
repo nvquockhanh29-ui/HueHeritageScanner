@@ -124,12 +124,12 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     }
 
     // MARK: - ARSessionDelegate: Bắt màu thực từ camera và ghi nhận mesh (Chống văng app 100%, đồng bộ tọa độ thế giới chính xác)
-    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+        func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
         let meshList = anchors.compactMap { $0 as? ARMeshAnchor }
         guard !meshList.isEmpty else { return }
 
         let now = Date().timeIntervalSince1970
-        let shouldSampleColors = (now - lastColorSampleTime > 0.3)
+        let shouldSampleColors = (now - lastColorSampleTime > 0.25)
         let currentFrame = shouldSampleColors ? session.currentFrame : nil
         if shouldSampleColors {
             lastColorSampleTime = now
@@ -139,11 +139,19 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             guard let self = self else { return }
             for anchor in meshList {
                 self.allMeshAnchors[anchor.identifier] = anchor
-                if let frame = currentFrame {
-                    let oldColors = self.anchorColors[anchor.identifier]
-                    let colors = self.sampleCameraColors(for: anchor, frame: frame, existingColors: oldColors)
-                    if !colors.isEmpty {
-                        self.anchorColors[anchor.identifier] = colors
+            }
+
+            // Liên tục quét và sơn màu ảnh thật lên tất cả các phần kiến trúc trong bán kính 5m trước camera
+            if let frame = currentFrame {
+                let camPos = simd_float3(frame.camera.transform.columns.3.x, frame.camera.transform.columns.3.y, frame.camera.transform.columns.3.z)
+                for (id, anchor) in self.allMeshAnchors {
+                    let anchorPos = simd_float3(anchor.transform.columns.3.x, anchor.transform.columns.3.y, anchor.transform.columns.3.z)
+                    if simd_distance(camPos, anchorPos) < 5.0 {
+                        let oldColors = self.anchorColors[id]
+                        let colors = self.sampleCameraColors(for: anchor, frame: frame, existingColors: oldColors)
+                        if !colors.isEmpty {
+                            self.anchorColors[id] = colors
+                        }
                     }
                 }
             }
@@ -157,7 +165,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     }
 
         // MARK: - Trích xuất Màu Sắc Ảnh Thực tế từ Cảm biến Camera LiDAR với Lọc Pháp Tuyến & Bảo tồn Màu
-    private func sampleCameraColors(for anchor: ARMeshAnchor, frame: ARFrame?, existingColors: [UInt8]?) -> [UInt8] {
+        private func sampleCameraColors(for anchor: ARMeshAnchor, frame: ARFrame?, existingColors: [UInt8]?) -> [UInt8] {
         guard let frame = frame else { return existingColors ?? [] }
         let pixelBuffer = frame.capturedImage
         let camera = frame.camera
@@ -177,12 +185,6 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
 
         let vertices = anchor.geometry.vertices
         let transform = anchor.transform
-        let invCam = camera.transform.inverse
-        let fx = camera.intrinsics[0][0]
-        let fy = camera.intrinsics[1][1]
-        let cx = camera.intrinsics[2][0]
-        let cy = camera.intrinsics[2][1]
-
         let oldColors = existingColors
         let hasOld = (oldColors != nil && oldColors!.count >= vertices.count * 3)
 
@@ -196,22 +198,24 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         let camPos = simd_float3(camera.transform.columns.3.x, camera.transform.columns.3.y, camera.transform.columns.3.z)
         let normals = anchor.geometry.normals
         let hasNormals = (normals.count == vertices.count)
+        let bufferSize = CGSize(width: width, height: height)
 
         for i in 0..<vertices.count {
             let v = vertices[i]
             let worldCoord = simd_mul(transform, simd_float4(v.x, v.y, v.z, 1.0))
-            let camCoord = simd_mul(invCam, worldCoord)
+            let worldPoint = simd_float3(worldCoord.x, worldCoord.y, worldCoord.z)
 
             var sampled = false
             var r: UInt8 = defR
             var g: UInt8 = defG
             var b: UInt8 = defB
 
-            // Điểm nằm trước camera trong phạm vi hiệu dụng LiDAR 0.15m - 4.5m
-            if -camCoord.z > 0.15 && -camCoord.z < 4.5 {
-                let depth = -camCoord.z
-                let px = Int((fx * (camCoord.x / depth)) + cx)
-                let py = Int((fy * (-camCoord.y / depth)) + cy)
+            let dist = simd_distance(camPos, worldPoint)
+            if dist > 0.15 && dist < 4.5 {
+                // Chiếu trực tiếp 3D World Point sang tọa độ 2D của capturedImage với Apple ARKit projectPoint
+                let pt = camera.projectPoint(worldPoint, orientation: .landscapeRight, viewportSize: bufferSize)
+                let px = Int(pt.x)
+                let py = Int(pt.y)
 
                 if px >= 0 && px < width && py >= 0 && py < height {
                     var isValidAngle = true
@@ -219,10 +223,8 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                         let n = normals[i]
                         let worldNorm4 = simd_mul(transform, simd_float4(n.x, n.y, n.z, 0.0))
                         let worldNorm = simd_normalize(simd_float3(worldNorm4.x, worldNorm4.y, worldNorm4.z))
-                        let dirToCam = simd_normalize(camPos - simd_float3(worldCoord.x, worldCoord.y, worldCoord.z))
-                        let angleCos = simd_dot(worldNorm, dirToCam)
-                        // Bề mặt phải hướng về phía camera ít nhất ~15 độ để tránh nhòe góc cạnh hoặc tràn màu mặt sau
-                        if angleCos < 0.25 {
+                        let dirToCam = simd_normalize(camPos - worldPoint)
+                        if simd_dot(worldNorm, dirToCam) <= 0.05 {
                             isValidAngle = false
                         }
                     }
@@ -247,7 +249,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                 colors.append(g)
                 colors.append(b)
             } else if hasOld {
-                // Bảo tồn 100% màu ảnh thật đã chụp trước đó, không bị ghi đè màu vàng/đen khi quay camera góc khác
+                // Bảo tồn màu ảnh thật đã chụp trước đó, không bao giờ bị đè màu vàng
                 colors.append(oldColors![i * 3])
                 colors.append(oldColors![i * 3 + 1])
                 colors.append(oldColors![i * 3 + 2])
