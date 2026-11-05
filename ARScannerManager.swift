@@ -554,10 +554,10 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             fileHandle.write(headerData)
         }
 
-        var vertexOffset = 0
         var vertexChunk = ""
         var faceChunk = ""
 
+        // BƯỚC 1: Ghi TOÀN BỘ ĐỈNH (Vertices) của tất cả Anchor trước theo đúng chuẩn PLY
         for anchor in anchorsSnapshot {
             let geometry = anchor.geometry
             let transform = anchor.transform
@@ -566,7 +566,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
 
             for i in 0..<vertices.count {
                 let v = vertices[i]
-                let localCoord = simd_float4(v[0], v[1], v[2], 1.0)
+                let localCoord = simd_float4(v.x, v.y, v.z, 1.0)
                 let worldCoord = simd_mul(transform, localCoord)
 
                 var r: UInt8 = 215
@@ -586,8 +586,19 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                     vertexChunk = ""
                 }
             }
+        }
+        if !vertexChunk.isEmpty, let d = vertexChunk.data(using: .utf8) {
+            fileHandle.write(d)
+            vertexChunk = ""
+        }
 
+        // BƯỚC 2: Ghi TOÀN BỘ MẶT TAM GIÁC (Faces) sau theo đúng chuẩn PLY
+        var vertexOffset = 0
+        for anchor in anchorsSnapshot {
+            let geometry = anchor.geometry
             let faces = geometry.faces
+            let vCount = geometry.vertices.count
+
             for i in 0..<faces.count {
                 let idx0 = Int(faces[i, 0]) + vertexOffset
                 let idx1 = Int(faces[i, 1]) + vertexOffset
@@ -599,12 +610,12 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                     faceChunk = ""
                 }
             }
-
-            vertexOffset += vertices.count
+            vertexOffset += vCount
         }
-
-        if !vertexChunk.isEmpty, let d = vertexChunk.data(using: .utf8) { fileHandle.write(d) }
-        if !faceChunk.isEmpty, let d = faceChunk.data(using: .utf8) { fileHandle.write(d) }
+        if !faceChunk.isEmpty, let d = faceChunk.data(using: .utf8) {
+            fileHandle.write(d)
+            faceChunk = ""
+        }
 
         return tempURL
     }
