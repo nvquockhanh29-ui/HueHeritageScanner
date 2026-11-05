@@ -5,6 +5,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   build-ios:
     name: Build Unsigned IPA on Cloud Mac
@@ -52,3 +55,13 @@ jobs:
         with:
           name: HueHeritageScanner-IPA
           path: HueHeritageScanner.ipa
+
+      - name: Publish Direct Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.4
+          name: "Hue Heritage Scanner v2.4 (Sensor Eye Mode)"
+          body: "Bản phát hành v2.4: Mắt quét quang học LiDAR siêu nhẹ truyền trực tiếp thời gian thực, khử hoàn toàn tải CPU điện thoại, chống văng app và chống nóng máy."
+          files: HueHeritageScanner.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
