@@ -49,6 +49,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             configuration.sceneReconstruction = .mesh
         }
         configuration.environmentTexturing = .automatic
+        configuration.planeDetection = [.horizontal, .vertical]
 
         arView?.session.delegate = self
         arView?.delegate = self
@@ -151,15 +152,8 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     }
 
     func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
-        let meshList = anchors.compactMap { $0 as? ARMeshAnchor }
-        guard !meshList.isEmpty else { return }
-        meshQueue.async { [weak self] in
-            guard let self = self else { return }
-            for a in meshList {
-                self.allMeshAnchors.removeValue(forKey: a.identifier)
-                self.anchorColors.removeValue(forKey: a.identifier)
-            }
-        }
+        // Bảo tồn toàn bộ các phần di tích đã quét trong bộ nhớ, không xóa khi ARKit phân trang vùng đệm
+        // Nhờ đó không gian quét luôn được ghi nhớ đầy đủ, không bị mất vị trí hay thủng lỗ khi quay lại
     }
 
         // MARK: - Trích xuất Màu Sắc Ảnh Thực tế từ Cảm biến Camera LiDAR với Lọc Pháp Tuyến & Bảo tồn Màu
@@ -448,7 +442,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             // Giữ thứ tự cố định theo UUID để tọa độ đỉnh không bị nhảy xáo trộn
             let sortedAnchors = anchorsList.sorted { $0.identifier.uuidString < $1.identifier.uuidString }
             // Truyền lên tới 150 anchor mới nhất để bao phủ rộng khắp không gian
-            let activeAnchors = sortedAnchors.count > 150 ? Array(sortedAnchors.suffix(150)) : sortedAnchors
+            let activeAnchors = sortedAnchors // Truyền toàn bộ 100% các khối kiến trúc đã quét, không cắt xén
             
             var allPositions: [Float] = []
             var allColors: [UInt8] = [] // Dùng UInt8 [0-255] giảm 6 lần dung lượng JSON
