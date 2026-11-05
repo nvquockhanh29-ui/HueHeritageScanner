@@ -28,7 +28,7 @@ struct ARViewContainer: UIViewRepresentable {
 
 struct ContentView: View {
     @StateObject private var scanner = ARScannerManager()
-    @State private var serverIP: String = "192.168.2.17"
+    @AppStorage("serverIP") private var serverIP: String = "172.20.10.2"
     @State private var showingSettings = false
     @State private var statusToast: String = ""
     @State private var showToast = false
@@ -193,7 +193,7 @@ struct ContentView: View {
                             if scanner.isScanning {
                                 scanner.stopSession()
                             } else {
-                                scanner.startSession()
+                                scanner.startSession(serverIP: serverIP)
                             }
                         }) {
                             HStack(spacing: 4) {
@@ -356,7 +356,7 @@ struct SettingsSheet: View {
                     HStack {
                         Text("Phiên bản")
                         Spacer()
-                        Text("v1.9 - High-Density Smooth World Tracking")
+                        Text("v2.4 - Mắt Quét Cảm Biến Thời Gian Thực (Sensor Eye)")
                             .foregroundColor(.secondary)
                     }
                 }

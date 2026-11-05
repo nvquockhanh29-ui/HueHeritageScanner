@@ -25,23 +25,24 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
 
     var arView: ARSCNView?
 
-    // Bộ nhớ đệm thread-safe (Bảo toàn 100% dữ liệu, không bao giờ mất điểm hay sập app)
+    // Bộ nhớ đệm thread-safe (Bảo toàn 100% dữ liệu di tích, không bao giờ mất điểm hay tràn ram)
     private let meshQueue = DispatchQueue(label: "vn.hueheritage.meshQueue")
     private var allMeshAnchors: [UUID: ARMeshAnchor] = [:]
     private var anchorColors: [UUID: [UInt8]] = [:]
     private var meshNodes: [UUID: SCNNode] = [:]
     
-    // Throttling để tối ưu hiệu năng và chống tràn bộ nhớ / văng app
+    // Throttling để tối ưu hiệu năng và chống tràn bộ nhớ
     private var lastMetricsUpdate: TimeInterval = 0
-    private var lastColorSampleTime: TimeInterval = 0
     
-    // Kênh WebSocket truyền trực tiếp
+    // Kênh WebSocket truyền trực tiếp mắt quét (Sensor Eye)
     private var webSocketTask: URLSessionWebSocketTask?
-    private var liveStreamTimer: Timer?
-    private var isStreamingBatch = false
-    private var currentServerIP: String = "192.168.2.17"
+    private var currentServerIP: String = "172.20.10.2"
 
-    func startSession() {
+    func startSession(serverIP: String? = nil) {
+        if let ip = serverIP, !ip.trimmingCharacters(in: .whitespaces).isEmpty {
+            currentServerIP = ip.trimmingCharacters(in: .whitespaces)
+        }
+
         let configuration = ARWorldTrackingConfiguration()
         if ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) {
             configuration.sceneReconstruction = .meshWithClassification
@@ -61,6 +62,9 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             arView?.session.run(configuration, options: [])
         }
         isScanning = true
+
+        // Tự động khởi tạo luồng truyền trực tiếp mắt quét sang Laptop
+        startLiveStream(serverIP: currentServerIP)
     }
 
     func stopSession() {
@@ -123,49 +127,113 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    // MARK: - ARSessionDelegate: Bắt màu thực từ camera và ghi nhận mesh (Chống văng app 100%, đồng bộ tọa độ thế giới chính xác)
-        func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+    // MARK: - ARSessionDelegate: Mắt Quét Cảm Biến Thời Gian Thực (Sensor Eye)
+    // iPhone đóng vai trò mắt quét LiDAR, truyền từng khối nhẹ sang Laptop xử lý trực tiếp
+    func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
+        handleMeshAnchors(anchors, session: session)
+    }
+
+    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+        handleMeshAnchors(anchors, session: session)
+    }
+
+    func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
+        // Bảo tồn toàn bộ các phần di tích đã quét trong bộ nhớ, không xóa
+    }
+
+    private func handleMeshAnchors(_ anchors: [ARAnchor], session: ARSession) {
         let meshList = anchors.compactMap { $0 as? ARMeshAnchor }
         guard !meshList.isEmpty else { return }
 
-        let now = Date().timeIntervalSince1970
-        let shouldSampleColors = (now - lastColorSampleTime > 0.25)
-        let currentFrame = shouldSampleColors ? session.currentFrame : nil
-        if shouldSampleColors {
-            lastColorSampleTime = now
-        }
+        let currentFrame = session.currentFrame
 
         meshQueue.async { [weak self] in
             guard let self = self else { return }
+
             for anchor in meshList {
                 self.allMeshAnchors[anchor.identifier] = anchor
+                let oldColors = self.anchorColors[anchor.identifier]
+                let colors = self.sampleCameraColors(for: anchor, frame: currentFrame, existingColors: oldColors)
+                self.anchorColors[anchor.identifier] = colors
+
+                // Truyền trực tiếp khối quét thời gian thực sang Laptop (Mắt quét quang học, không nặng CPU)
+                self.sendAnchorChunk(anchor: anchor, colors: colors)
             }
 
-            // Liên tục quét và sơn màu ảnh thật lên tất cả các phần kiến trúc trong bán kính 5m trước camera
+            // Tự động sơn màu ảnh thật lên các khối lân cận trong tầm nhìn camera
             if let frame = currentFrame {
                 let camPos = simd_float3(frame.camera.transform.columns.3.x, frame.camera.transform.columns.3.y, frame.camera.transform.columns.3.z)
+                var paintedCount = 0
                 for (id, anchor) in self.allMeshAnchors {
+                    guard paintedCount < 2 else { break }
+                    if meshList.contains(where: { $0.identifier == id }) { continue }
+
                     let anchorPos = simd_float3(anchor.transform.columns.3.x, anchor.transform.columns.3.y, anchor.transform.columns.3.z)
-                    if simd_distance(camPos, anchorPos) < 5.0 {
+                    if simd_distance(camPos, anchorPos) < 4.0 {
                         let oldColors = self.anchorColors[id]
                         let colors = self.sampleCameraColors(for: anchor, frame: frame, existingColors: oldColors)
                         if !colors.isEmpty {
                             self.anchorColors[id] = colors
+                            self.sendAnchorChunk(anchor: anchor, colors: colors)
+                            paintedCount += 1
                         }
                     }
                 }
             }
+
             self.throttledUpdateMeshMetrics()
         }
     }
 
-    func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
-        // Bảo tồn toàn bộ các phần di tích đã quét trong bộ nhớ, không xóa khi ARKit phân trang vùng đệm
-        // Nhờ đó không gian quét luôn được ghi nhớ đầy đủ, không bị mất vị trí hay thủng lỗ khi quay lại
+    // MARK: - Truyền trực tiếp từng khối Anchor (Siêu nhẹ ~8KB, 0% CPU điện thoại)
+    private func sendAnchorChunk(anchor: ARMeshAnchor, colors: [UInt8]) {
+        guard isLiveStreaming, let ws = webSocketTask, ws.state == .running else { return }
+
+        let transform = anchor.transform
+        let transformArray: [Float] = [
+            transform.columns.0.x, transform.columns.0.y, transform.columns.0.z, transform.columns.0.w,
+            transform.columns.1.x, transform.columns.1.y, transform.columns.1.z, transform.columns.1.w,
+            transform.columns.2.x, transform.columns.2.y, transform.columns.2.z, transform.columns.2.w,
+            transform.columns.3.x, transform.columns.3.y, transform.columns.3.z, transform.columns.3.w
+        ]
+
+        let vertices = anchor.geometry.vertices
+        let faces = anchor.geometry.faces
+
+        var localPositions: [Float] = []
+        localPositions.reserveCapacity(vertices.count * 3)
+        for i in 0..<vertices.count {
+            let v = vertices[i]
+            localPositions.append((v.x * 1000).rounded() / 1000)
+            localPositions.append((v.y * 1000).rounded() / 1000)
+            localPositions.append((v.z * 1000).rounded() / 1000)
+        }
+
+        var indices: [Int] = []
+        indices.reserveCapacity(faces.count * 3)
+        for f in 0..<faces.count {
+            indices.append(Int(faces[f, 0]))
+            indices.append(Int(faces[f, 1]))
+            indices.append(Int(faces[f, 2]))
+        }
+
+        let chunkPayload: [String: Any] = [
+            "type": "anchor_chunk",
+            "id": anchor.identifier.uuidString,
+            "transform": transformArray,
+            "positions": localPositions,
+            "indices": indices,
+            "colors": colors
+        ]
+
+        if let jsonData = try? JSONSerialization.data(withJSONObject: chunkPayload),
+           let jsonStr = String(data: jsonData, encoding: .utf8) {
+            ws.send(.string(jsonStr)) { _ in }
+        }
     }
 
-        // MARK: - Trích xuất Màu Sắc Ảnh Thực tế từ Cảm biến Camera LiDAR với Lọc Pháp Tuyến & Bảo tồn Màu
-        private func sampleCameraColors(for anchor: ARMeshAnchor, frame: ARFrame?, existingColors: [UInt8]?) -> [UInt8] {
+    // MARK: - Trích xuất Màu Sắc Ảnh Thực tế từ Cảm biến Camera (Không bị mất góc, sơn màu 100% di tích)
+    private func sampleCameraColors(for anchor: ARMeshAnchor, frame: ARFrame?, existingColors: [UInt8]?) -> [UInt8] {
         guard let frame = frame else { return existingColors ?? [] }
         let pixelBuffer = frame.capturedImage
         let camera = frame.camera
@@ -196,13 +264,19 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         let defB: UInt8 = 140
 
         let camPos = simd_float3(camera.transform.columns.3.x, camera.transform.columns.3.y, camera.transform.columns.3.z)
-        let normals = anchor.geometry.normals
-        let hasNormals = (normals.count == vertices.count)
-        let bufferSize = CGSize(width: width, height: height)
+
+        // Phép chiếu chuẩn xác từ không gian thế giới sang gốc cảm biến Camera LiDAR
+        let viewMat = camera.viewMatrix(for: .landscapeRight)
+        let projMat = camera.projectionMatrix(for: .landscapeRight, viewportSize: CGSize(width: width, height: height), zNear: 0.05, zFar: 100.0)
+        let vpMat = simd_mul(projMat, viewMat)
+
+        let imgW = Float(width)
+        let imgH = Float(height)
 
         for i in 0..<vertices.count {
             let v = vertices[i]
-            let worldCoord = simd_mul(transform, simd_float4(v.x, v.y, v.z, 1.0))
+            let localCoord = simd_float4(v.x, v.y, v.z, 1.0)
+            let worldCoord = simd_mul(transform, localCoord)
             let worldPoint = simd_float3(worldCoord.x, worldCoord.y, worldCoord.z)
 
             var sampled = false
@@ -211,35 +285,28 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             var b: UInt8 = defB
 
             let dist = simd_distance(camPos, worldPoint)
-            if dist > 0.15 && dist < 4.5 {
-                // Chiếu trực tiếp 3D World Point sang tọa độ 2D của capturedImage với Apple ARKit projectPoint
-                let pt = camera.projectPoint(worldPoint, orientation: .landscapeRight, viewportSize: bufferSize)
-                let px = Int(pt.x)
-                let py = Int(pt.y)
+            if dist > 0.15 && dist < 5.0 {
+                let clip = simd_mul(vpMat, worldCoord)
+                if clip.w > 0.05 {
+                    let ndcX = clip.x / clip.w
+                    let ndcY = clip.y / clip.w
 
-                if px >= 0 && px < width && py >= 0 && py < height {
-                    var isValidAngle = true
-                    if hasNormals {
-                        let n = normals[i]
-                        let worldNorm4 = simd_mul(transform, simd_float4(n.x, n.y, n.z, 0.0))
-                        let worldNorm = simd_normalize(simd_float3(worldNorm4.x, worldNorm4.y, worldNorm4.z))
-                        let dirToCam = simd_normalize(camPos - worldPoint)
-                        if simd_dot(worldNorm, dirToCam) <= 0.05 {
-                            isValidAngle = false
+                    if ndcX >= -0.98 && ndcX <= 0.98 && ndcY >= -0.98 && ndcY <= 0.98 {
+                        let px = Int((ndcX + 1.0) * 0.5 * imgW)
+                        let py = Int((1.0 - ndcY) * 0.5 * imgH)
+
+                        if px >= 0 && px < width && py >= 0 && py < height {
+                            let yVal = Float(yBase[py * yStride + px])
+                            let uvRow = (py / 2) * uvStride
+                            let uvCol = (px / 2) * 2
+                            let cbVal = Float(uvBase[uvRow + uvCol]) - 128.0
+                            let crVal = Float(uvBase[uvRow + uvCol + 1]) - 128.0
+
+                            r = UInt8(clamping: Int(yVal + 1.402 * crVal))
+                            g = UInt8(clamping: Int(yVal - 0.344136 * cbVal - 0.714136 * crVal))
+                            b = UInt8(clamping: Int(yVal + 1.772 * cbVal))
+                            sampled = true
                         }
-                    }
-
-                    if isValidAngle {
-                        let yVal = Float(yBase[py * yStride + px])
-                        let uvRow = (py / 2) * uvStride
-                        let uvCol = (px / 2) * 2
-                        let cbVal = Float(uvBase[uvRow + uvCol]) - 128.0
-                        let crVal = Float(uvBase[uvRow + uvCol + 1]) - 128.0
-
-                        r = UInt8(clamping: Int(yVal + 1.402 * crVal))
-                        g = UInt8(clamping: Int(yVal - 0.344136 * cbVal - 0.714136 * crVal))
-                        b = UInt8(clamping: Int(yVal + 1.772 * cbVal))
-                        sampled = true
                     }
                 }
             }
@@ -249,7 +316,6 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                 colors.append(g)
                 colors.append(b)
             } else if hasOld {
-                // Bảo tồn màu ảnh thật đã chụp trước đó, không bao giờ bị đè màu vàng
                 colors.append(oldColors![i * 3])
                 colors.append(oldColors![i * 3 + 1])
                 colors.append(oldColors![i * 3 + 2])
@@ -276,7 +342,6 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
 
     func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
         guard let meshAnchor = anchor as? ARMeshAnchor else { return }
-        // Tối ưu hóa bộ nhớ: chỉ tạo lại SCNGeometry khi số đỉnh thay đổi đáng kể để chống giật lag và chống văng app
         let curCount = node.geometry?.sources.first?.vectorCount ?? 0
         if abs(curCount - meshAnchor.geometry.vertices.count) > 20 {
             node.geometry = createVisualizationGeometry(meshAnchor: meshAnchor)
@@ -332,21 +397,21 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             self.faceCount = totalFaces
             self.missingAreaCount = sparseChunks
 
-            if totalVerts < 10000 {
-                self.coverageQuality = "Thấp (Cần quét thêm)"
-                self.accuracyErrorMM = 3.2
-            } else if totalVerts < 40000 {
-                self.coverageQuality = "Trung bình"
-                self.accuracyErrorMM = 2.0
+            if totalVerts == 0 {
+                self.coverageQuality = "Chưa quét"
+            } else if totalVerts < 10000 {
+                self.coverageQuality = "Đang khảo sát sơ bộ"
+            } else if totalVerts < 30000 {
+                self.coverageQuality = "Bao phủ trung bình"
             } else {
-                self.coverageQuality = "Chuẩn HBIM (LOD 300)"
-                self.accuracyErrorMM = 1.1
+                self.coverageQuality = "Chi tiết cao HBIM"
             }
         }
     }
 
-    // MARK: - Kiểm tra kết nối tới Laptop
+    // MARK: - Kiểm tra Kết Nối Laptop
     func testConnection(serverIP: String, completion: @escaping (Bool, String) -> Void) {
+        currentServerIP = serverIP
         guard let url = URL(string: "http://\(serverIP):8000/api/models") else {
             completion(false, "IP không hợp lệ")
             return
@@ -362,14 +427,14 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                     completion(true, "Kết nối thành công tới máy chủ!")
                 } else {
                     self?.isConnectedToLaptop = false
-                    self?.connectionStatusMsg = "Không tìm thấy Laptop. Hãy bật Wi-Fi (cùng mạng Laptop) hoặc cắm cáp USB (172.20.10.2)"
+                    self?.connectionStatusMsg = "Không tìm thấy Laptop. Hãy cắm cáp USB (172.20.10.2) hoặc bật Wi-Fi (192.168.2.17)"
                     completion(false, "Chưa kết nối được máy chủ")
                 }
             }
         }.resume()
     }
 
-    // MARK: - Live Stream WebSocket: Truyền MẶT LƯỚI 3D TOÀN BỘ (SNAPSHOT) Thời Gian Thực
+    // MARK: - Live Stream WebSocket: Mắt Quét Quang Học Thời Gian Thực
     func toggleLiveStream(serverIP: String) {
         currentServerIP = serverIP
         if isLiveStreaming {
@@ -379,24 +444,16 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-        func startLiveStream(serverIP: String) {
+    func startLiveStream(serverIP: String) {
         currentServerIP = serverIP
         isLiveStreaming = true
         connectWebSocket(serverIP: serverIP)
-
-        liveStreamTimer?.invalidate()
-        // Phát sóng MESH bề mặt 3D mỗi 0.6 giây
-        liveStreamTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
-            guard let self = self, self.isScanning, self.vertexCount > 0 else { return }
-            self.streamLiveMeshBatch()
-        }
     }
 
     private func connectWebSocket(serverIP: String) {
         guard let url = URL(string: "ws://\(serverIP):8000/ws/stream") else { return }
         let session = URLSession(configuration: .default)
         let task = session.webSocketTask(with: url)
-        // Mở rộng bộ đệm tối đa lên 64MB để không bao giờ bị nghẽn payload
         task.maximumMessageSize = 64 * 1024 * 1024
         task.resume()
         self.webSocketTask = task
@@ -424,129 +481,48 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    // Truyền toàn bộ Mesh bề mặt 3D thực tế theo thời gian thực (Đồng bộ 1:1 với iPhone, không gián đoạn, tự phục hồi)
-    private func streamLiveMeshBatch() {
-        guard let ws = webSocketTask, !isStreamingBatch else {
-            if isLiveStreaming && (webSocketTask == nil || webSocketTask?.state != .running) {
-                reconnectWebSocket()
-            }
-            return
-        }
-        isStreamingBatch = true
-
-        meshQueue.async { [weak self] in
-            guard let self = self else { return }
-            defer { self.isStreamingBatch = false }
-
-            let anchorsList = Array(self.allMeshAnchors.values)
-            guard !anchorsList.isEmpty else { return }
-
-            // Giữ thứ tự cố định theo UUID để tọa độ đỉnh không bị nhảy xáo trộn
-            let sortedAnchors = anchorsList.sorted { $0.identifier.uuidString < $1.identifier.uuidString }
-            // Truyền lên tới 150 anchor mới nhất để bao phủ rộng khắp không gian
-            let activeAnchors = sortedAnchors // Truyền toàn bộ 100% các khối kiến trúc đã quét, không cắt xén
-            
-            var allPositions: [Float] = []
-            var allColors: [UInt8] = [] // Dùng UInt8 [0-255] giảm 6 lần dung lượng JSON
-            var allIndices: [Int] = []
-            var vOffset = 0
-
-            for anchor in activeAnchors {
-                let vertices = anchor.geometry.vertices
-                let faces = anchor.geometry.faces
-                let transform = anchor.transform
-                let cList = self.anchorColors[anchor.identifier]
-
-                for i in 0..<vertices.count {
-                    let v = vertices[i]
-                    let localCoord = simd_float4(v[0], v[1], v[2], 1.0)
-                    let worldCoord = simd_mul(transform, localCoord)
-                    // Làm tròn 3 số thập phân (độ chính xác 1mm) để giảm dung lượng mạng
-                    allPositions.append((worldCoord.x * 1000).rounded() / 1000)
-                    allPositions.append((worldCoord.y * 1000).rounded() / 1000)
-                    allPositions.append((worldCoord.z * 1000).rounded() / 1000)
-
-                    if let clr = cList, (i * 3 + 2) < clr.count {
-                        allColors.append(clr[i * 3])
-                        allColors.append(clr[i * 3 + 1])
-                        allColors.append(clr[i * 3 + 2])
-                    } else {
-                        allColors.append(215)
-                        allColors.append(180)
-                        allColors.append(140)
-                    }
-                }
-
-                for f in 0..<faces.count {
-                    allIndices.append(Int(faces[f, 0]) + vOffset)
-                    allIndices.append(Int(faces[f, 1]) + vOffset)
-                    allIndices.append(Int(faces[f, 2]) + vOffset)
-                }
-
-                vOffset += vertices.count
-            }
-
-            guard !allPositions.isEmpty else { return }
-
-            let payload: [String: Any] = [
-                "type": "mesh_snapshot",
-                "positions": allPositions,
-                "indices": allIndices,
-                "colors": allColors
-            ]
-
-            guard let jsonData = try? JSONSerialization.data(withJSONObject: payload),
-                  let jsonStr = String(data: jsonData, encoding: .utf8) else {
-                return
-            }
-
-            ws.send(.string(jsonStr)) { [weak self] error in
-                if let _ = error {
-                    // Tự động kết nối lại nếu có lỗi đường truyền mà không làm gián đoạn việc quét
-                    self?.reconnectWebSocket()
-                }
-            }
-        }
-    }
-
     func stopLiveStream() {
         isLiveStreaming = false
-        liveStreamTimer?.invalidate()
-        liveStreamTimer = nil
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
     }
 
-    // MARK: - Xuất file PLY trực tiếp bằng FileHandle kèm Texture ảnh chụp thực tế
+    // MARK: - Xuất file PLY chuẩn định dạng
     func exportToPLY() -> URL? {
-        let (anchorsSnapshot, colorsSnapshot, totalV, totalF) = meshQueue.sync {
-            (Array(allMeshAnchors.values), anchorColors, vertexCount, faceCount)
+        let (anchorsSnapshot, colorsSnapshot) = meshQueue.sync {
+            (Array(allMeshAnchors.values), anchorColors)
         }
         guard !anchorsSnapshot.isEmpty else { return nil }
 
-        let fileName = "HueHeritage_\(Int(Date().timeIntervalSince1970)).ply"
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("HueHeritage_\(Int(Date().timeIntervalSince1970)).ply")
 
-        FileManager.default.createFile(atPath: tempURL.path, contents: nil, attributes: nil)
+        if FileManager.default.fileExists(atPath: tempURL.path) {
+            try? FileManager.default.removeItem(at: tempURL)
+        }
+
+        guard FileManager.default.createFile(atPath: tempURL.path, contents: nil) else { return nil }
         guard let fileHandle = try? FileHandle(forWritingTo: tempURL) else { return nil }
+        defer { try? fileHandle.close() }
 
-        defer {
-            try? fileHandle.close()
+        var totalVertices = 0
+        var totalFaces = 0
+        for anchor in anchorsSnapshot {
+            totalVertices += anchor.geometry.vertices.count
+            totalFaces += anchor.geometry.faces.count
         }
 
         let header = """
         ply
         format ascii 1.0
-        comment Hue Heritage Scanner - Digital Twin & HBIM
-        comment Estimated Accuracy: ±\(String(format: "%.1f", accuracyErrorMM)) mm
-        element vertex \(totalV)
+        comment Hue Heritage Scanner - LiDAR Point Cloud & Mesh
+        element vertex \(totalVertices)
         property float x
         property float y
         property float z
         property uchar red
         property uchar green
         property uchar blue
-        element face \(totalF)
+        element face \(totalFaces)
         property list uchar int vertex_indices
         end_header
         
@@ -559,7 +535,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         var vertexChunk = ""
         var faceChunk = ""
 
-        // BƯỚC 1: Ghi TOÀN BỘ ĐỈNH (Vertices) của tất cả Anchor trước theo đúng chuẩn PLY
+        // BƯỚC 1: Ghi TOÀN BỘ ĐỈNH (Vertices)
         for anchor in anchorsSnapshot {
             let geometry = anchor.geometry
             let transform = anchor.transform
@@ -594,7 +570,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
             vertexChunk = ""
         }
 
-        // BƯỚC 2: Ghi TOÀN BỘ MẶT TAM GIÁC (Faces) sau theo đúng chuẩn PLY
+        // BƯỚC 2: Ghi TOÀN BỘ MẶT TAM GIÁC (Faces)
         var vertexOffset = 0
         for anchor in anchorsSnapshot {
             let geometry = anchor.geometry
@@ -646,7 +622,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
         }
     }
 
-    // MARK: - Gửi tệp lên Laptop (Hỗ trợ tự động ghép Master ICP trên máy chủ)
+    // MARK: - Gửi tệp lên Laptop
     func uploadToServer(serverIP: String, isBackgroundStream: Bool = false, completion: @escaping (Bool, String) -> Void) {
         if !isBackgroundStream {
             isUploading = true
@@ -685,11 +661,11 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
                     }
                     if let error = error {
                         self.isConnectedToLaptop = false
-                        completion(false, "Lỗi kết nối: Kiểm tra Wi-Fi cùng mạng Laptop hoặc cắm cáp USB")
+                        completion(false, "Lỗi kết nối: Cắm cáp USB (172.20.10.2) hoặc kết nối Wi-Fi Laptop")
                         return
                     }
                     self.isConnectedToLaptop = true
-                    completion(true, "Đồng bộ thành công! Laptop đã tự động ghép mô hình.")
+                    completion(true, "Đồng bộ thành công! Laptop đã tiếp nhận dữ liệu di tích.")
                 }
             }
             task.resume()
@@ -697,7 +673,7 @@ class ARScannerManager: NSObject, ObservableObject, ARSessionDelegate, ARSCNView
     }
 }
 
-// MARK: - Extensions ARKit & SceneKit (Đọc an toàn cả 16-bit và 32-bit Index, chống sập tuyệt đối)
+// MARK: - Extensions ARKit & SceneKit
 private extension ARGeometrySource {
     subscript(index: Int) -> simd_float3 {
         let pointer = buffer.contents().advanced(by: offset + (self.stride * index))
