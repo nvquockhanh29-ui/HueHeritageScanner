@@ -1,4 +1,4 @@
-name: Build Hue Heritage Scanner IPA
+name: Build Hue Heritage Scanner and AR IPAs
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-ios:
-    name: Build Unsigned IPA on Cloud Mac
+    name: Build Unsigned IPAs on Cloud Mac
     runs-on: macos-latest
 
     steps:
@@ -22,11 +22,10 @@ jobs:
           sudo xcode-select -switch /Applications/Xcode.app
           xcodebuild -version
 
-      - name: Compile Swift App directly
+      - name: Compile Both iOS Apps directly
         run: |
+          # 1. Biên dịch App Quét Hiện Trường (HueHeritageScanner)
           mkdir -p Payload/HueHeritageScanner.app
-          
-          # Biên dịch trực tiếp Swift cho chip Apple ARM64 (iPhone)
           xcrun -sdk iphoneos swiftc \
                 -target arm64-apple-ios16.0 \
                 -O \
@@ -44,27 +43,69 @@ jobs:
                 TCPStreamClient.swift \
                 -o Payload/HueHeritageScanner.app/HueHeritageScanner
           
-          # Sao chép Info.plist và App Icons vào gói ứng dụng
           cp Info.plist Payload/HueHeritageScanner.app/Info.plist
           cp AppIcon*.png Payload/HueHeritageScanner.app/ 2>/dev/null || true
           cp iTunesArtwork.png Payload/HueHeritageScanner.app/ 2>/dev/null || true
           
-          # Đóng gói tệp IPA
           zip -r HueHeritageScanner.ipa Payload
-          echo "✅ Đã đóng gói thành công tệp IPA trực tiếp!"
+          rm -rf Payload
+          echo "✅ Đã đóng gói thành công HueHeritageScanner.ipa!"
 
-      - name: Upload IPA Artifact
+          # 2. Biên dịch App AR Riêng Biệt (HueHeritageAR)
+          mkdir -p Payload/HueHeritageAR.app
+          xcrun -sdk iphoneos swiftc \
+                -target arm64-apple-ios16.0 \
+                -O \
+                -framework SwiftUI \
+                -framework ARKit \
+                -framework SceneKit \
+                -framework Combine \
+                -framework AVFoundation \
+                -framework UIKit \
+                HueHeritageAR/HueHeritageARApp.swift \
+                HueHeritageAR/ARHeritageManager.swift \
+                HueHeritageAR/ARHeritageView.swift \
+                HueHeritageAR/ContentView.swift \
+                -o Payload/HueHeritageAR.app/HueHeritageAR
+          
+          cp HueHeritageAR/Info.plist Payload/HueHeritageAR.app/Info.plist
+          cp HueHeritageAR/AppIcon*.png Payload/HueHeritageAR.app/ 2>/dev/null || true
+          cp HueHeritageAR/iTunesArtwork.png Payload/HueHeritageAR.app/ 2>/dev/null || true
+          
+          zip -r HueHeritageAR.ipa Payload
+          rm -rf Payload
+          echo "✅ Đã đóng gói thành công HueHeritageAR.ipa!"
+
+      - name: Upload IPAs Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HueHeritageScanner-v3.0-IPA
-          path: HueHeritageScanner.ipa
+          name: HueHeritage-IPAs-v3.1
+          path: |
+            HueHeritageScanner.ipa
+            HueHeritageAR.ipa
 
       - name: Publish Direct Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.0
-          name: "Hue Heritage Scanner v3.0 (QR Connect & Real-time HUE1 Streaming)"
-          body: "Bản phát hành v3.0: Quét mã QR tự động kết nối PC (hue1://), truyền dữ liệu nhị phân HUE1 Z-up thời gian thực trên cổng 18080, tương thích Windows Mobile Hotspot và hiệu chuẩn kích thước thực tế (Scale Calibration)."
-          files: HueHeritageScanner.ipa
+          tag_name: v3.1
+          name: "Huế Heritage iOS v3.1 (Tách riêng App Quét LiDAR & App Xem AR 2 Tỷ Lệ)"
+          body: |
+            ## Bản phát hành chính thức v3.1 — Dự án Bảo tồn Di tích Cố đô Huế (Phủ Công chúa Ngọc Sơn)
+            
+            Phân tách hoàn toàn thành 2 ứng dụng iOS độc lập:
+            1. **`HueHeritageScanner.ipa` (v3.0)**:
+               - Ứng dụng quét LiDAR dToF + RGB tại hiện trường di tích.
+               - Quét mã QR tự động kết nối TCP `HUE1` cổng 18080 tới laptop Windows.
+               - Tương thích Mobile Hotspot và hiệu chuẩn kích thước thực tế.
+            
+            2. **`HueHeritageAR.ipa` (v1.0)**:
+               - Ứng dụng Thực tế Tăng cường AR chuyên sâu.
+               - **2 Chế độ Tỷ Lệ Không Gian**:
+                 - *Để bàn (~25cm, 1:10)*: Đặt trên bàn làm việc, xoay 360°, phóng to xem chi tiết mộng.
+                 - *Thực tế (~2.5m, 1:1)*: Đặt trên mặt sàn, bước đi xung quanh (6DOF tracking), đứng dưới dạ vì kèo ngắm kích thước thật 100%.
+               - **Thanh trượt động học rã mộng 4 pha (Kinematic Explode 0% -> 100%)**: Bóc tách chốt âm dương, con bọ, trến ngang và mộng đuôi én kèo suốt.
+          files: |
+            HueHeritageScanner.ipa
+            HueHeritageAR.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
