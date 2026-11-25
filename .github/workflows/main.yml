@@ -36,9 +36,12 @@ jobs:
                 -framework Combine \
                 -framework Metal \
                 -framework AVFoundation \
+                -framework Network \
                 HueHeritageScannerApp.swift \
                 ARScannerManager.swift \
                 ContentView.swift \
+                QRScannerView.swift \
+                TCPStreamClient.swift \
                 -o Payload/HueHeritageScanner.app/HueHeritageScanner
           
           # Sao chép Info.plist và App Icons vào gói ứng dụng
@@ -53,15 +56,15 @@ jobs:
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HueHeritageScanner-IPA
+          name: HueHeritageScanner-v3.0-IPA
           path: HueHeritageScanner.ipa
 
       - name: Publish Direct Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.4
-          name: "Hue Heritage Scanner v2.4 (Sensor Eye Mode)"
-          body: "Bản phát hành v2.4: Mắt quét quang học LiDAR siêu nhẹ truyền trực tiếp thời gian thực, khử hoàn toàn tải CPU điện thoại, chống văng app và chống nóng máy."
+          tag_name: v3.0
+          name: "Hue Heritage Scanner v3.0 (QR Connect & Real-time HUE1 Streaming)"
+          body: "Bản phát hành v3.0: Quét mã QR tự động kết nối PC (hue1://), truyền dữ liệu nhị phân HUE1 Z-up thời gian thực trên cổng 18080, tương thích Windows Mobile Hotspot và hiệu chuẩn kích thước thực tế (Scale Calibration)."
           files: HueHeritageScanner.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

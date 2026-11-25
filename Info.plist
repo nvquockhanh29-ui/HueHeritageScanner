@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Huế Scanner</string>
 	<key>CFBundleExecutable</key>
 	<string>HueHeritageScanner</string>
 	<key>CFBundleIdentifier</key>
@@ -32,7 +34,9 @@
 		</dict>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Ứng dụng cần sử dụng Camera và cảm biến LiDAR để quét 3D di tích phục vụ bảo tồn số.</string>
+	<string>Ứng dụng cần sử dụng Camera và cảm biến LiDAR để quét 3D di tích và đọc mã QR kết nối với máy tính.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Ứng dụng cần quyền truy cập Mạng cục bộ (Local Network) để truyền dữ liệu quét 3D LiDAR qua TCP (cổng 18080) tới phần mềm máy tính qua Mobile Hotspot hoặc Wi-Fi LAN.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
